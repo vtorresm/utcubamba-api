@@ -1,0 +1,35 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from src.api.routes import auth, users, medicamentos
+from src.db.init_db import init_db
+from src.core.logging import setup_logging
+
+# Configurar logging
+logger = setup_logging()
+
+app = FastAPI(title="User CRUD API with Authentication, Roles, and Medicamentos")
+
+# Configuración de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Registrar rutas
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(users.router, prefix="/users", tags=["users"])
+app.include_router(medicamentos.router, prefix="/medicamentos", tags=["medicamentos"])
+
+# Inicializar la base de datos al inicio
+@app.on_event("startup")
+def on_startup():
+    logger.info("Starting application and initializing database")
+    init_db()
+
+if __name__ == "__main__":
+    import uvicorn
+    logger.info("Running Uvicorn server")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
