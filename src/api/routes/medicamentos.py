@@ -347,45 +347,62 @@ async def import_medicamentos(
         }
     return {"message": f"Successfully imported {imported_count} medicamentos"}
 
-@router.post("/validate/csv")
-async def validate_medicamentos_csv(
+@router.post("/validate")
+async def validate_medicamentos(
     file: UploadFile = File(...),
     current_user: MedicamentoModel = Depends(require_role("admin"))
 ):
-    logger.info(f"Starting CSV validation by admin: {current_user.email}")
+    logger.info(f"Starting file validation by admin: {current_user.email}, file: {file.filename}")
     
-    # Verificar que el archivo sea CSV
-    if not file.filename.endswith('.csv'):
-        logger.error("Invalid file format: File must be a CSV")
-        raise HTTPException(status_code=400, detail="File must be a CSV")
+    # Verificar tipo de archivo
+    filename = file.filename.lower()
+    if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
+        logger.error("Invalid file format: File must be CSV or Excel (.csv_SOCIALS, .xlsx, .xls)")
+        raise HTTPException(status_code=400, detail="File must be CSV or Excel (.csv, .xlsx, .xls)")
 
     # Leer el contenido del archivo
     content = await file.read()
-    csv_file = io.StringIO(content.decode('utf-8'))
-    reader = csv.DictReader(csv_file)
-
-    # Verificar encabezados esperados
     expected_headers = [
         "medicamento_id", "nombre_comercial", "nombre_generico", "presentacion",
         "concentracion", "laboratorio", "precio_unitario", "stock_actual",
         "fecha_vencimiento", "codigo_barras", "requiere_receta", "unidad_empaque",
         "via_administracion"
     ]
-    if not all(header in reader.fieldnames for header in expected_headers):
-        missing = [h for h in expected_headers if h not in reader.fieldnames]
-        logger.error(f"Missing required headers in CSV: {missing}")
-        raise HTTPException(status_code=400, detail=f"Missing required headers: {missing}")
+
+    rows = []
+    file_type = "CSV" if filename.endswith('.csv') else "Excel"
+    logger.debug(f"Processing {file_type} file: {filename}")
+
+    try:
+        if filename.endswith('.csv'):
+            csv_file = io.StringIO(content.decode('utf-8'))
+            reader = csv.DictReader(csv_file)
+            if not all(header in reader.fieldnames for header in expected_headers):
+                missing = [h for h in expected_headers if h not in reader.fieldnames]
+                logger.error(f"Missing required headers in CSV: {missing}")
+                raise HTTPException(status_code=400, detail=f"Missing required headers: {missing}")
+            rows = list(reader)
+        else:  # Excel
+            df = pd.read_excel(io.BytesIO(content))
+            if not all(header in df.columns for header in expected_headers):
+                missing = [h for h in expected_headers if h not in df.columns]
+                logger.error(f"Missing required headers in Excel: {missing}")
+                raise HTTPException(status_code=400, detail=f"Missing required headers: {missing}")
+            rows = df.to_dict('records')
+    except Exception as e:
+        logger.error(f"Failed to read {file_type} file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to read {file_type} file: {str(e)}")
 
     valid_count = 0
     errors = []
 
-    for row_num, row in enumerate(reader, start=2):  # start=2 para contar la línea de datos
+    for row_num, row in enumerate(rows, start=2):  # start=2 para contar la línea de datos
         is_valid, row_errors = validate_medicamento_data(row, row_num, expected_headers)
         if is_valid:
             valid_count += 1
         errors.extend(row_errors)
 
-    logger.info(f"CSV validation completed: {valid_count} valid rows, {len(errors)} errors")
+    logger.info(f"{file_type} validation completed: {valid_count} valid rows, {len(errors)} errors")
     if errors:
         return {
             "message": f"Validated {valid_count} valid rows with {len(errors)} errors",
