@@ -1,0 +1,4 @@
+medicamento_id,nombre_comercial,nombre_generico,presentacion,concentracion,laboratorio,precio_unitario,stock_actual,fecha_vencimiento,codigo_barras,requiere_receta,unidad_empaque,via_administracion
+,Metformina,Metformina,Tabletas,850mg,Genfar,7.80,100,2026-06-30,7702031000111,True,30,Oral
+,Losartán,Losartán Potásico,Tabletas,50mg,MK,6.50,120,2027-03-15,7702031000128,True,28,Oral
+,Atorvastatina,Atorvastatina Cálcica,Tabletas,20mg,Pfizer,15.90,60,2026-09-20,7702031000135,True,30,Oral
