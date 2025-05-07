@@ -219,8 +219,18 @@ def export_medicamentos_csv(
         media_type="text/csv"
     )
 
-def validate_medicamento_data(row, row_num, expected_headers):
+def validate_medicamento_data(row, row_num, expected_headers, db: Session):
     errors = []
+    
+    # Verificar unicidad de codigo_barras
+    codigo_barras = str(row.get("codigo_barras", "")).strip() if row.get("codigo_barras") else None
+    if codigo_barras:
+        existing_medicamento = db.query(MedicamentoModel).filter(MedicamentoModel.codigo_barras == codigo_barras).first()
+        if existing_medicamento:
+            logger.error(f"Validation error in row {row_num}: Barcode {codigo_barras} already exists")
+            errors.append(f"Row {row_num}: Barcode {codigo_barras} already exists")
+            return False, errors
+
     try:
         # Convertir y validar datos
         medicamento_data = {
@@ -232,7 +242,7 @@ def validate_medicamento_data(row, row_num, expected_headers):
             "precio_unitario": float(row["precio_unitario"]) if row.get("precio_unitario") else None,
             "stock_actual": int(row["stock_actual"]) if row.get("stock_actual") else None,
             "fecha_vencimiento": pd.to_datetime(row["fecha_vencimiento"]).date() if row.get("fecha_vencimiento") else None,
-            "codigo_barras": str(row["codigo_barras"]).strip() if row.get("codigo_barras") and str(row["codigo_barras"]).strip() else None,
+            "codigo_barras": codigo_barras,
             "requiere_receta": str(row["requiere_receta"]).lower() in ("true", "1", "yes") if row.get("requiere_receta") else False,
             "unidad_empaque": int(row["unidad_empaque"]) if row.get("unidad_empaque") else None,
             "via_administracion": str(row["via_administracion"]).strip() if row.get("via_administracion") else ""
@@ -350,14 +360,15 @@ async def import_medicamentos(
 @router.post("/validate")
 async def validate_medicamentos(
     file: UploadFile = File(...),
-    current_user: MedicamentoModel = Depends(require_role("admin"))
+    current_user: MedicamentoModel = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
 ):
     logger.info(f"Starting file validation by admin: {current_user.email}, file: {file.filename}")
     
     # Verificar tipo de archivo
     filename = file.filename.lower()
     if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
-        logger.error("Invalid file format: File must be CSV or Excel (.csv_SOCIALS, .xlsx, .xls)")
+        logger.error("Invalid file format: File must be CSV or Excel (.csv, .xlsx, .xls)")
         raise HTTPException(status_code=400, detail="File must be CSV or Excel (.csv, .xlsx, .xls)")
 
     # Leer el contenido del archivo
@@ -397,7 +408,7 @@ async def validate_medicamentos(
     errors = []
 
     for row_num, row in enumerate(rows, start=2):  # start=2 para contar la línea de datos
-        is_valid, row_errors = validate_medicamento_data(row, row_num, expected_headers)
+        is_valid, row_errors = validate_medicamento_data(row, row_num, expected_headers, db)
         if is_valid:
             valid_count += 1
         errors.extend(row_errors)
