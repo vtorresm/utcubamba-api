@@ -1,39 +1,52 @@
-from sqlalchemy import Column, Integer, String, Numeric, Date, Boolean, ForeignKey, DateTime
-from sqlalchemy.orm import declarative_base, relationship
-from datetime import datetime
+from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
+from src.db.database import Base
 
-Base = declarative_base()
+class Categoria(Base):
+    __tablename__ = "categorias"
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(50), nullable=False, default="user")
-    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    categoria_id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(50), unique=True, nullable=False)
 
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    token = Column(String(255), nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    user = relationship("User", back_populates="refresh_tokens")
+    medicamentos = relationship("Medicamento", back_populates="categoria")
+
+class Condicion(Base):
+    __tablename__ = "condiciones"
+
+    condicion_id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(50), unique=True, nullable=False)
+
+    medicamentos = relationship("Medicamento", back_populates="condicion")
+
+class TipoToma(Base):
+    __tablename__ = "tipos_toma"
+
+    tipo_toma_id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(50), unique=True, nullable=False)
+
+    medicamentos = relationship("Medicamento", back_populates="tipo_toma")
 
 class Medicamento(Base):
     __tablename__ = "medicamentos"
-    medicamento_id = Column(Integer, primary_key=True)
-    nombre_comercial = Column(String(255), nullable=False)
-    nombre_generico = Column(String(255), nullable=False)
-    presentacion = Column(String(100), nullable=False)
-    concentracion = Column(String(100), nullable=False)
-    laboratorio = Column(String(255), nullable=False)
-    precio_unitario = Column(Numeric(10, 2), nullable=False)
+
+    medicamento_id = Column(Integer, primary_key=True, index=True)
+    nombre_comercial = Column(String(100), nullable=False)
+    nombre_generico = Column(String(100))
+    presentacion = Column(String(100))
+    concentracion = Column(String(50))
+    laboratorio = Column(String(100))
+    precio_unitario = Column(Float, nullable=False)
     stock_actual = Column(Integer, nullable=False)
-    fecha_vencimiento = Column(Date, nullable=False)
-    codigo_barras = Column(String(50), unique=True, nullable=True)
-    requiere_receta = Column(Boolean, nullable=False, default=False)
-    unidad_empaque = Column(Integer, nullable=False)
-    via_administracion = Column(String(100), nullable=False)
+    fecha_vencimiento = Column(Date)
+    codigo_barras = Column(String(50), unique=True)
+    requiere_receta = Column(Boolean, default=False)
+    unidad_empaque = Column(Integer)
+    via_administracion = Column(String(50))
+    disponibilidad = Column(String(20), nullable=False, default="En Stock")  # Nueva columna
+    categoria_id = Column(Integer, ForeignKey("categorias.categoria_id"), nullable=False)
+    condicion_id = Column(Integer, ForeignKey("condiciones.condicion_id"), nullable=False)
+    tipo_toma_id = Column(Integer, ForeignKey("tipos_toma.tipo_toma_id"), nullable=False)
+
+    categoria = relationship("Categoria", back_populates="medicamentos")
+    condicion = relationship("Condicion", back_populates="medicamentos")
+    tipo_toma = relationship("TipoToma", back_populates="medicamentos")
