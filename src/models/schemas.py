@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List, Dict
+from enum import Enum
 
 # Esquemas existentes
 class CategoriaBase(BaseModel):
@@ -69,7 +70,6 @@ class Medicamento(MedicamentoBase):
     class Config:
         orm_mode = True
 
-# Nuevos esquemas para el reporte
 class ReporteInventarioItem(BaseModel):
     id: int
     nombre_comercial: str
@@ -84,3 +84,39 @@ class ReporteInventario(BaseModel):
     encabezado: Dict[str, str]
     datos: List[ReporteInventarioItem]
     resumen: Dict[str, float]
+
+# Nuevos esquemas para Movimiento
+class TipoMovimiento(str, Enum):
+    ENTRADA = "Entrada"
+    SALIDA = "Salida"
+
+class MovimientoBase(BaseModel):
+    fecha: datetime
+    tipo_movimiento: TipoMovimiento
+    medicamento_id: int
+    cantidad: int = Field(..., gt=0)
+    observaciones: Optional[str] = Field(None, max_length=200)
+
+class MovimientoCreate(MovimientoBase):
+    pass
+
+class Movimiento(MovimientoBase):
+    movimiento_id: int
+    medicamento: Medicamento
+
+    class Config:
+        orm_mode = True
+
+# Esquemas para el reporte de movimientos
+class ReporteMovimientosItem(BaseModel):
+    id: int
+    fecha: datetime
+    tipo_movimiento: str
+    medicamento: str
+    cantidad: int
+    observaciones: Optional[str]
+
+class ReporteMovimientos(BaseModel):
+    encabezado: Dict[str, str]
+    datos: List[ReporteMovimientosItem]
+    resumen: Dict[str, int]

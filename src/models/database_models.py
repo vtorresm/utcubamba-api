@@ -1,6 +1,11 @@
-from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import relationship
 from src.db.database import Base
+import enum
+
+class TipoMovimiento(enum.Enum):
+    ENTRADA = "Entrada"
+    SALIDA = "Salida"
 
 class Categoria(Base):
     __tablename__ = "categorias"
@@ -42,7 +47,7 @@ class Medicamento(Base):
     requiere_receta = Column(Boolean, default=False)
     unidad_empaque = Column(Integer)
     via_administracion = Column(String(50))
-    disponibilidad = Column(String(20), nullable=False, default="En Stock")  # Nueva columna
+    disponibilidad = Column(String(20), nullable=False, default="En Stock")
     categoria_id = Column(Integer, ForeignKey("categorias.categoria_id"), nullable=False)
     condicion_id = Column(Integer, ForeignKey("condiciones.condicion_id"), nullable=False)
     tipo_toma_id = Column(Integer, ForeignKey("tipos_toma.tipo_toma_id"), nullable=False)
@@ -50,3 +55,16 @@ class Medicamento(Base):
     categoria = relationship("Categoria", back_populates="medicamentos")
     condicion = relationship("Condicion", back_populates="medicamentos")
     tipo_toma = relationship("TipoToma", back_populates="medicamentos")
+    movimientos = relationship("Movimiento", back_populates="medicamento")
+
+class Movimiento(Base):
+    __tablename__ = "movimientos"
+
+    movimiento_id = Column(Integer, primary_key=True, index=True)
+    fecha = Column(DateTime, nullable=False)
+    tipo_movimiento = Column(Enum(TipoMovimiento), nullable=False)
+    medicamento_id = Column(Integer, ForeignKey("medicamentos.medicamento_id"), nullable=False)
+    cantidad = Column(Integer, nullable=False)
+    observaciones = Column(String(200))
+
+    medicamento = relationship("Medicamento", back_populates="movimientos")
