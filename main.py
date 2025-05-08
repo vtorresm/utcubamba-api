@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(medicamentos.router, prefix="/medicamentos", tags=["medicamentos"])
+app.include_router(reportes.router, prefix="/reportes", tags=["reportes"])  # Nuevo router
 
 if __name__ == "__main__":
     import uvicorn

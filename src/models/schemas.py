@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
 from datetime import date
-from typing import Optional
+from typing import Optional, List, Dict
 
+# Esquemas existentes
 class CategoriaBase(BaseModel):
     nombre: str = Field(..., max_length=50)
 
@@ -51,7 +52,7 @@ class MedicamentoBase(BaseModel):
     requiere_receta: bool = False
     unidad_empaque: Optional[int] = None
     via_administracion: Optional[str] = Field(None, max_length=50)
-    disponibilidad: str = Field(..., max_length=20)  # Nueva columna
+    disponibilidad: str = Field(..., max_length=20)
     categoria_id: int
     condicion_id: int
     tipo_toma_id: int
@@ -67,3 +68,19 @@ class Medicamento(MedicamentoBase):
 
     class Config:
         orm_mode = True
+
+# Nuevos esquemas para el reporte
+class ReporteInventarioItem(BaseModel):
+    id: int
+    nombre_comercial: str
+    nombre_generico: Optional[str]
+    categoria: str
+    stock: int
+    precio_unitario: float
+    valor_total: float
+    estado: str
+
+class ReporteInventario(BaseModel):
+    encabezado: Dict[str, str]
+    datos: List[ReporteInventarioItem]
+    resumen: Dict[str, float]
