@@ -5,7 +5,7 @@ from sqlalchemy import and_, func
 from typing import Optional, List, Dict
 from src.db.database import get_db
 from src.models.database_models import Medicamento as MedicamentoModel, Categoria as CategoriaModel, Movimiento as MovimientoModel
-from src.models.schemas import ReporteInventario, ReporteInventarioItem, ReporteMovimientos, ReporteMovimientosItem, ReporteMovimientos
+from src.models.schemas import ReporteInventario, ReporteInventarioItem, ReporteMovimientos, ReporteMovimientosItem
 from src.api.dependencies import get_current_user, require_role
 import logging
 from datetime import date, datetime
@@ -486,99 +486,84 @@ def generate_movements_report(
         logger.error(f"Invalid format requested: {formato}")
         raise HTTPException(status_code=400, detail="Invalid format. Use 'json', 'csv', 'excel', or 'pdf'.")
 
-# Reporte de Tendencias (nuevo)
-def generate_trends_report_data(
-    mes: Optional[str],
-    medicamento: Optional[str],
-    fecha_desde: Optional[date],
-    fecha_hasta: Optional[date],
+# Reporte de Alertas (nuevo)
+def generate_alerts_report_data(
+    categoria: Optional[str] = None,
+    estado: Optional[str] = None,
+    stock_min: Optional[int] = None,
     db: Session
 ):
     filtros_aplicados = []
-    month_map = {
-        "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4, "Mayo": 5, "Junio": 6,
-        "Julio": 7, "Agosto": 8, "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
-    }
-    if mes:
-        filtros_aplicados.append(f"Mes: {mes}")
-    if medicamento:
-        filtros_aplicados.append(f"Medicamento: {medicamento}")
-    if fecha_desde:
-        filtros_aplicados.append(f"Fecha Desde: {fecha_desde}")
-    if fecha_hasta:
-        filtros_aplicados.append(f"Fecha Hasta: {fecha_hasta}")
+    if categoria:
+        filtros_aplicados.append(f"Categoría: {categoria}")
+    if estado:
+        filtros_aplicados.append(f"Estado: {estado}")
+    if stock_min is not None:
+        filtros_aplicados.append(f"Stock Mínimo: {stock_min}")
     filtros_str = ", ".join(filtros_aplicados) if filtros_aplicados else "Ninguno"
 
     encabezado = {
-        "titulo": "Reporte de Tendencias",
+        "titulo": "Reporte de Alertas",
         "fecha": str(date.today()),
         "filtros_aplicados": filtros_str
     }
 
-    # Consulta para calcular demanda (salidas agrupadas por mes y medicamento)
-    query = (
-        db.query(
-            func.extract('month', MovimientoModel.fecha).label('month'),
-            MedicamentoModel.nombre_comercial,
-            func.sum(MovimientoModel.cantidad).label('demanda')
-        )
-        .join(MedicamentoModel)
-        .filter(MovimientoModel.tipo_movimiento == "Salida")
-        .group_by(func.extract('month', MovimientoModel.fecha), MedicamentoModel.nombre_comercial)
-    )
+    query = db.query(MedicamentoModel).join(CategoriaModel)
 
     filters = []
-    if mes:
-        month_num = month_map.get(mes)
-        if month_num:
-            filters.append(func.extract('month', MovimientoModel.fecha) == month_num)
-    if medicamento:
-        filters.append(MedicamentoModel.nombre_comercial.ilike(f"%{medicamento}%"))
-    if fecha_desde:
-        filters.append(MovimientoModel.fecha >= fecha_desde)
-    if fecha_hasta:
-        filters.append(MovimientoModel.fecha <= fecha_hasta)
+    if categoria:
+        filters.append(CategoriaModel.nombre.ilike(f"%{categoria}%"))
+    if stock_min is not None:
+        filters.append(MedicamentoModel.stock_actual >= stock_min)
+    if estado:
+        if estado == "Agotado":
+            filters.append(MedicamentoModel.stock_actual == 0)
+        elif estado == "Stock Bajo":
+            filters.append(MedicamentoModel.stock_actual > 0)
+            filters.append(MedicamentoModel.stock_actual <= 10)
+        elif estado == "En Stock":
+            filters.append(MedicamentoModel.stock_actual > 10)
 
     if filters:
         query = query.filter(and_(*filters))
 
-    results = query.all()
+    medicamentos = query.all()
 
     datos = []
-    total_demanda = 0
+    total_alertas = 0
 
-    for result in results:
-        mes_nombre = list(month_map.keys())[int(result.month) - 1]
-        item = {
-            "mes": mes_nombre,
-            "medicamento": result.nombre_comercial,
-            "demanda": int(result.demanda)
-        }
-        datos.append(item)
-        total_demanda += int(result.demanda)
+    for med in medicamentos:
+        if med.stock_actual <= 10:  # Umbral para "Stock bajo"
+            alerta = "Stock bajo"
+            item = {
+                "medicamento": med.nombre_comercial,
+                "alerta": alerta,
+                "cantidad": med.stock_actual
+            }
+            datos.append(item)
+            total_alertas += 1
 
     resumen = {
-        "total_demanda": total_demanda
+        "total_alertas": total_alertas
     }
 
     return encabezado, datos, resumen
 
-@router.get("/tendencias")
-def generate_trends_report(
-    mes: Optional[str] = None,
-    medicamento: Optional[str] = None,
-    fecha_desde: Optional[date] = None,
-    fecha_hasta: Optional[date] = None,
+@router.get("/alertas")
+def generate_alerts_report(
+    categoria: Optional[str] = None,
+    estado: Optional[str] = None,
+    stock_min: Optional[int] = None,
     formato: str = "json",
     current_user: MedicamentoModel = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
-    logger.info(f"Generating trends report by admin: {current_user.email} in format: {formato}")
+    logger.info(f"Generating alerts report by admin: {current_user.email} in format: {formato}")
 
-    encabezado, datos, resumen = generate_trends_report_data(mes, medicamento, fecha_desde, fecha_hasta, db)
+    encabezado, datos, resumen = generate_alerts_report_data(categoria, estado, stock_min, db)
 
     if formato.lower() == "json":
-        logger.info(f"Trends report generated in JSON: {resumen['total_demanda']} total demanda")
+        logger.info(f"Alerts report generated in JSON: {resumen['total_alertas']} alertas")
         return {
             "encabezado": encabezado,
             "datos": datos,
@@ -589,7 +574,7 @@ def generate_trends_report(
         output = io.StringIO()
         writer = csv.DictWriter(
             output,
-            fieldnames=["mes", "medicamento", "demanda"]
+            fieldnames=["medicamento", "alerta", "cantidad"]
         )
 
         output.write(f"# {encabezado['titulo']}\n")
@@ -602,13 +587,13 @@ def generate_trends_report(
             writer.writerow(item)
 
         output.write("\n")
-        output.write(f"# Total Demanda: {resumen['total_demanda']}\n")
+        output.write(f"# Total Alertas: {resumen['total_alertas']}\n")
 
         headers = {
-            "Content-Disposition": "attachment; filename=reporte_tendencias.csv",
+            "Content-Disposition": "attachment; filename=reporte_alertas.csv",
             "Content-Type": "text/csv",
         }
-        logger.info(f"Trends report generated in CSV: {resumen['total_demanda']} total demanda")
+        logger.info(f"Alerts report generated in CSV: {resumen['total_alertas']} alertas")
         return StreamingResponse(
             iter([output.getvalue()]),
             headers=headers,
@@ -629,15 +614,15 @@ def generate_trends_report(
             df.to_excel(writer, sheet_name='Reporte', index=False, startrow=4)
 
             pd.DataFrame([
-                ["Total Demanda", resumen['total_demanda']]
+                ["Total Alertas", resumen['total_alertas']]
             ]).to_excel(writer, sheet_name='Reporte', index=False, header=False, startrow=len(datos) + 6)
 
         headers = {
-            "Content-Disposition": "attachment; filename=reporte_tendencias.xlsx",
+            "Content-Disposition": "attachment; filename=reporte_alertas.xlsx",
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
         output.seek(0)
-        logger.info(f"Trends report generated in Excel: {resumen['total_demanda']} total demanda")
+        logger.info(f"Alerts report generated in Excel: {resumen['total_alertas']} alertas")
         return StreamingResponse(
             output,
             headers=headers,
@@ -659,7 +644,7 @@ def generate_trends_report(
         \begin{document}
 
         \begin{center}
-            \textbf{\LARGE Reporte de Tendencias} \\
+            \textbf{\LARGE Reporte de Alertas} \\
             \vspace{0.5cm}
             \textbf{Fecha:} """ + str(encabezado["fecha"]) + r""" \\
             \textbf{Filtros Aplicados:} """ + (encabezado["filtros_aplicados"] if encabezado["filtros_aplicados"] != "Ninguno" else "Ninguno") + r"""
@@ -669,12 +654,12 @@ def generate_trends_report(
         \begin{landscape}
         \begin{longtable}{@{} l l r @{}}
             \toprule
-            \textbf{Mes} & \textbf{Medicamento} & \textbf{Demanda} \\
+            \textbf{Medicamento} & \textbf{Alerta} & \textbf{Cantidad} \\
             \midrule
             \endhead
         """
         for item in datos:
-            latex_content += f"{item['mes']} & {item['medicamento']} & {item['demanda']} \\\\\n"
+            latex_content += f"{item['medicamento']} & {item['alerta']} & {item['cantidad']} \\\\\n"
 
         latex_content += r"""
             \bottomrule
@@ -683,7 +668,7 @@ def generate_trends_report(
 
         \section*{Resumen}
         \begin{itemize}
-            \item \textbf{Total Demanda:} """ + str(resumen["total_demanda"]) + r"""
+            \item \textbf{Total Alertas:} """ + str(resumen["total_alertas"]) + r"""
         \end{itemize}
 
         \end{document}
@@ -691,10 +676,10 @@ def generate_trends_report(
 
         output = io.BytesIO(latex_content.encode('utf-8'))
         headers = {
-            "Content-Disposition": "attachment; filename=reporte_tendencias.pdf",
+            "Content-Disposition": "attachment; filename=reporte_alertas.pdf",
             "Content-Type": "application/pdf",
         }
-        logger.info(f"Trends report generated in PDF: {resumen['total_demanda']} total demanda")
+        logger.info(f"Alerts report generated in PDF: {resumen['total_alertas']} alertas")
         return StreamingResponse(
             output,
             headers=headers,
