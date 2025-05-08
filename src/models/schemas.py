@@ -1,74 +1,87 @@
-from pydantic import BaseModel, Field
-from datetime import date, datetime
-from typing import Optional, List, Dict
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime, date
 from enum import Enum
 
-# Esquemas existentes
+class TipoMovimiento(str, Enum):
+    Entrada = "Entrada"
+    Salida = "Salida"
+
 class CategoriaBase(BaseModel):
-    nombre: str = Field(..., max_length=50)
+    nombre: str
+    descripcion: Optional[str] = None
 
 class CategoriaCreate(CategoriaBase):
     pass
 
 class Categoria(CategoriaBase):
     categoria_id: int
-
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CondicionBase(BaseModel):
-    nombre: str = Field(..., max_length=50)
+    nombre: str
+    descripcion: Optional[str] = None
 
 class CondicionCreate(CondicionBase):
     pass
 
 class Condicion(CondicionBase):
     condicion_id: int
-
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TipoTomaBase(BaseModel):
-    nombre: str = Field(..., max_length=50)
+    nombre: str
+    descripcion: Optional[str] = None
 
 class TipoTomaCreate(TipoTomaBase):
     pass
 
 class TipoToma(TipoTomaBase):
     tipo_toma_id: int
-
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class MedicamentoBase(BaseModel):
-    nombre_comercial: str = Field(..., max_length=100)
-    nombre_generico: Optional[str] = Field(None, max_length=100)
-    presentacion: Optional[str] = Field(None, max_length=100)
-    concentracion: Optional[str] = Field(None, max_length=50)
-    laboratorio: Optional[str] = Field(None, max_length=100)
-    precio_unitario: float = Field(..., gt=0)
-    stock_actual: int = Field(..., ge=0)
-    fecha_vencimiento: Optional[date] = None
-    codigo_barras: Optional[str] = Field(None, max_length=50)
-    requiere_receta: bool = False
-    unidad_empaque: Optional[int] = None
-    via_administracion: Optional[str] = Field(None, max_length=50)
-    disponibilidad: str = Field(..., max_length=20)
+    nombre_comercial: str
+    nombre_generico: Optional[str] = None
     categoria_id: int
-    condicion_id: int
-    tipo_toma_id: int
+    stock_actual: int = 0
+    precio_unitario: float
+    disponibilidad: str
+    fecha_vencimiento: Optional[datetime] = None
+    lote: Optional[str] = None
+    laboratorio: Optional[str] = None
+    requiere_receta: Optional[str] = None
+    condicion_id: Optional[int] = None
+    tipo_toma_id: Optional[int] = None
 
 class MedicamentoCreate(MedicamentoBase):
     pass
 
 class Medicamento(MedicamentoBase):
     medicamento_id: int
-    categoria: Categoria
-    condicion: Condicion
-    tipo_toma: TipoToma
-
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class MovimientoBase(BaseModel):
+    fecha: datetime
+    tipo_movimiento: TipoMovimiento
+    medicamento_id: int
+    cantidad: int
+    observaciones: Optional[str] = None
+
+class MovimientoCreate(BaseModel):
+    tipo_movimiento: TipoMovimiento
+    medicamento_id: int
+    cantidad: int
+    observaciones: Optional[str] = None
+
+class Movimiento(MovimientoBase):
+    movimiento_id: int
+    class Config:
+        from_attributes = True
 
 class ReporteInventarioItem(BaseModel):
     id: int
@@ -81,33 +94,10 @@ class ReporteInventarioItem(BaseModel):
     estado: str
 
 class ReporteInventario(BaseModel):
-    encabezado: Dict[str, str]
+    encabezado: dict
     datos: List[ReporteInventarioItem]
-    resumen: Dict[str, float]
+    resumen: dict
 
-# Nuevos esquemas para Movimiento
-class TipoMovimiento(str, Enum):
-    ENTRADA = "Entrada"
-    SALIDA = "Salida"
-
-class MovimientoBase(BaseModel):
-    fecha: datetime
-    tipo_movimiento: TipoMovimiento
-    medicamento_id: int
-    cantidad: int = Field(..., gt=0)
-    observaciones: Optional[str] = Field(None, max_length=200)
-
-class MovimientoCreate(MovimientoBase):
-    pass
-
-class Movimiento(MovimientoBase):
-    movimiento_id: int
-    medicamento: Medicamento
-
-    class Config:
-        orm_mode = True
-
-# Esquemas para el reporte de movimientos
 class ReporteMovimientosItem(BaseModel):
     id: int
     fecha: datetime
@@ -117,6 +107,50 @@ class ReporteMovimientosItem(BaseModel):
     observaciones: Optional[str]
 
 class ReporteMovimientos(BaseModel):
-    encabezado: Dict[str, str]
+    encabezado: dict
     datos: List[ReporteMovimientosItem]
-    resumen: Dict[str, int]
+    resumen: dict
+
+# Nuevos esquemas para Alerta y HistorialAlerta
+class EstadoAlerta(str, Enum):
+    Pendiente = "Pendiente"
+    Resuelta = "Resuelta"
+
+class AlertaBase(BaseModel):
+    medicamento_id: int
+    tipo_alerta: str = "Stock bajo"
+    estado: EstadoAlerta = EstadoAlerta.Pendiente
+
+class AlertaCreate(AlertaBase):
+    pass
+
+class AlertaUpdate(BaseModel):
+    estado: EstadoAlerta
+    observaciones: Optional[str] = None
+
+class Alerta(AlertaBase):
+    alerta_id: int
+    fecha_creacion: datetime
+    fecha_actualizacion: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class AccionHistorial(str, Enum):
+    Creada = "Creada"
+    Actualizada = "Actualizada"
+    Resuelta = "Resuelta"
+    Eliminada = "Eliminada"
+
+class HistorialAlertaBase(BaseModel):
+    alerta_id: int
+    accion: AccionHistorial
+    observaciones: Optional[str] = None
+
+class HistorialAlertaCreate(HistorialAlertaBase):
+    pass
+
+class HistorialAlerta(HistorialAlertaBase):
+    historial_id: int
+    fecha: datetime
+    class Config:
+        from_attributes = True
