@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from typing import Optional, List, Dict
 from src.db.database import get_db
 from src.models.database_models import Medicamento as MedicamentoModel, Categoria as CategoriaModel, Movimiento as MovimientoModel
-from src.models.schemas import ReporteInventario, ReporteInventarioItem, ReporteMovimientos, ReporteMovimientosItem
+from src.models.schemas import ReporteInventario, ReporteInventarioItem, ReporteMovimientos, ReporteMovimientosItem, ReporteMovimientos
 from src.api.dependencies import get_current_user, require_role
 import logging
 from datetime import date, datetime
@@ -16,7 +16,7 @@ import csv
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Reporte de Inventario (existente)
+# Reporte de Inventario
 def generate_inventory_report_data(
     categoria: Optional[str],
     estado: Optional[str],
@@ -279,7 +279,7 @@ def generate_inventory_report(
         logger.error(f"Invalid format requested: {formato}")
         raise HTTPException(status_code=400, detail="Invalid format. Use 'json', 'csv', 'excel', or 'pdf'.")
 
-# Reporte de Movimientos (nuevo)
+# Reporte de Movimientos
 def generate_movements_report_data(
     tipo_movimiento: Optional[str],
     fecha_desde: Optional[date],
@@ -476,6 +476,225 @@ def generate_movements_report(
             "Content-Type": "application/pdf",
         }
         logger.info(f"Movements report generated in PDF: {resumen['total_movimientos']} movimientos")
+        return StreamingResponse(
+            output,
+            headers=headers,
+            media_type="application/pdf"
+        )
+
+    else:
+        logger.error(f"Invalid format requested: {formato}")
+        raise HTTPException(status_code=400, detail="Invalid format. Use 'json', 'csv', 'excel', or 'pdf'.")
+
+# Reporte de Tendencias (nuevo)
+def generate_trends_report_data(
+    mes: Optional[str],
+    medicamento: Optional[str],
+    fecha_desde: Optional[date],
+    fecha_hasta: Optional[date],
+    db: Session
+):
+    filtros_aplicados = []
+    month_map = {
+        "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4, "Mayo": 5, "Junio": 6,
+        "Julio": 7, "Agosto": 8, "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
+    }
+    if mes:
+        filtros_aplicados.append(f"Mes: {mes}")
+    if medicamento:
+        filtros_aplicados.append(f"Medicamento: {medicamento}")
+    if fecha_desde:
+        filtros_aplicados.append(f"Fecha Desde: {fecha_desde}")
+    if fecha_hasta:
+        filtros_aplicados.append(f"Fecha Hasta: {fecha_hasta}")
+    filtros_str = ", ".join(filtros_aplicados) if filtros_aplicados else "Ninguno"
+
+    encabezado = {
+        "titulo": "Reporte de Tendencias",
+        "fecha": str(date.today()),
+        "filtros_aplicados": filtros_str
+    }
+
+    # Consulta para calcular demanda (salidas agrupadas por mes y medicamento)
+    query = (
+        db.query(
+            func.extract('month', MovimientoModel.fecha).label('month'),
+            MedicamentoModel.nombre_comercial,
+            func.sum(MovimientoModel.cantidad).label('demanda')
+        )
+        .join(MedicamentoModel)
+        .filter(MovimientoModel.tipo_movimiento == "Salida")
+        .group_by(func.extract('month', MovimientoModel.fecha), MedicamentoModel.nombre_comercial)
+    )
+
+    filters = []
+    if mes:
+        month_num = month_map.get(mes)
+        if month_num:
+            filters.append(func.extract('month', MovimientoModel.fecha) == month_num)
+    if medicamento:
+        filters.append(MedicamentoModel.nombre_comercial.ilike(f"%{medicamento}%"))
+    if fecha_desde:
+        filters.append(MovimientoModel.fecha >= fecha_desde)
+    if fecha_hasta:
+        filters.append(MovimientoModel.fecha <= fecha_hasta)
+
+    if filters:
+        query = query.filter(and_(*filters))
+
+    results = query.all()
+
+    datos = []
+    total_demanda = 0
+
+    for result in results:
+        mes_nombre = list(month_map.keys())[int(result.month) - 1]
+        item = {
+            "mes": mes_nombre,
+            "medicamento": result.nombre_comercial,
+            "demanda": int(result.demanda)
+        }
+        datos.append(item)
+        total_demanda += int(result.demanda)
+
+    resumen = {
+        "total_demanda": total_demanda
+    }
+
+    return encabezado, datos, resumen
+
+@router.get("/tendencias")
+def generate_trends_report(
+    mes: Optional[str] = None,
+    medicamento: Optional[str] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
+    formato: str = "json",
+    current_user: MedicamentoModel = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    logger.info(f"Generating trends report by admin: {current_user.email} in format: {formato}")
+
+    encabezado, datos, resumen = generate_trends_report_data(mes, medicamento, fecha_desde, fecha_hasta, db)
+
+    if formato.lower() == "json":
+        logger.info(f"Trends report generated in JSON: {resumen['total_demanda']} total demanda")
+        return {
+            "encabezado": encabezado,
+            "datos": datos,
+            "resumen": resumen
+        }
+
+    elif formato.lower() == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=["mes", "medicamento", "demanda"]
+        )
+
+        output.write(f"# {encabezado['titulo']}\n")
+        output.write(f"# Fecha: {encabezado['fecha']}\n")
+        output.write(f"# Filtros Aplicados: {encabezado['filtros_aplicados']}\n")
+        output.write("\n")
+
+        writer.writeheader()
+        for item in datos:
+            writer.writerow(item)
+
+        output.write("\n")
+        output.write(f"# Total Demanda: {resumen['total_demanda']}\n")
+
+        headers = {
+            "Content-Disposition": "attachment; filename=reporte_tendencias.csv",
+            "Content-Type": "text/csv",
+        }
+        logger.info(f"Trends report generated in CSV: {resumen['total_demanda']} total demanda")
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            headers=headers,
+            media_type="text/csv"
+        )
+
+    elif formato.lower() == "excel":
+        output = io.BytesIO()
+        df = pd.DataFrame(datos)
+
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            pd.DataFrame([[
+                f"{encabezado['titulo']}",
+                f"Fecha: {encabezado['fecha']}",
+                f"Filtros Aplicados: {encabezado['filtros_aplicados']}"
+            ]]).to_excel(writer, sheet_name='Reporte', index=False, header=False, startrow=0)
+
+            df.to_excel(writer, sheet_name='Reporte', index=False, startrow=4)
+
+            pd.DataFrame([
+                ["Total Demanda", resumen['total_demanda']]
+            ]).to_excel(writer, sheet_name='Reporte', index=False, header=False, startrow=len(datos) + 6)
+
+        headers = {
+            "Content-Disposition": "attachment; filename=reporte_tendencias.xlsx",
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        output.seek(0)
+        logger.info(f"Trends report generated in Excel: {resumen['total_demanda']} total demanda")
+        return StreamingResponse(
+            output,
+            headers=headers,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    elif formato.lower() == "pdf":
+        latex_content = r"""
+        \documentclass[a4paper,12pt]{article}
+        \usepackage[utf8]{inputenc}
+        \usepackage{geometry}
+        \geometry{margin=1in}
+        \usepackage{booktabs}
+        \usepackage{longtable}
+        \usepackage{pdflscape}
+        \usepackage{enumitem}
+        \setlist[itemize]{leftmargin=*}
+        \usepackage{times}
+        \begin{document}
+
+        \begin{center}
+            \textbf{\LARGE Reporte de Tendencias} \\
+            \vspace{0.5cm}
+            \textbf{Fecha:} """ + str(encabezado["fecha"]) + r""" \\
+            \textbf{Filtros Aplicados:} """ + (encabezado["filtros_aplicados"] if encabezado["filtros_aplicados"] != "Ninguno" else "Ninguno") + r"""
+        \end{center}
+        \vspace{1cm}
+
+        \begin{landscape}
+        \begin{longtable}{@{} l l r @{}}
+            \toprule
+            \textbf{Mes} & \textbf{Medicamento} & \textbf{Demanda} \\
+            \midrule
+            \endhead
+        """
+        for item in datos:
+            latex_content += f"{item['mes']} & {item['medicamento']} & {item['demanda']} \\\\\n"
+
+        latex_content += r"""
+            \bottomrule
+        \end{longtable}
+        \end{landscape}
+
+        \section*{Resumen}
+        \begin{itemize}
+            \item \textbf{Total Demanda:} """ + str(resumen["total_demanda"]) + r"""
+        \end{itemize}
+
+        \end{document}
+        """
+
+        output = io.BytesIO(latex_content.encode('utf-8'))
+        headers = {
+            "Content-Disposition": "attachment; filename=reporte_tendencias.pdf",
+            "Content-Type": "application/pdf",
+        }
+        logger.info(f"Trends report generated in PDF: {resumen['total_demanda']} total demanda")
         return StreamingResponse(
             output,
             headers=headers,
