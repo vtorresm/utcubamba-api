@@ -488,10 +488,10 @@ def generate_movements_report(
 
 # Reporte de Alertas (nuevo)
 def generate_alerts_report_data(
+    db: Session,
     categoria: Optional[str] = None,
     estado: Optional[str] = None,
-    stock_min: Optional[int] = None,
-    db: Session
+    stock_min: Optional[int] = None
 ):
     filtros_aplicados = []
     if categoria:
@@ -560,7 +560,7 @@ def generate_alerts_report(
 ):
     logger.info(f"Generating alerts report by admin: {current_user.email} in format: {formato}")
 
-    encabezado, datos, resumen = generate_alerts_report_data(categoria, estado, stock_min, db)
+    encabezado, datos, resumen = generate_alerts_report_data(db, categoria, estado, stock_min)
 
     if formato.lower() == "json":
         logger.info(f"Alerts report generated in JSON: {resumen['total_alertas']} alertas")

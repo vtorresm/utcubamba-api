@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 from src.db.database import Base
 import enum
@@ -124,3 +124,23 @@ class Prediccion(Base):
 # Actualizar Medicamento
 Medicamento.uso_historico = relationship("UsoHistorico", back_populates="medicamento")
 Medicamento.predicciones = relationship("Prediccion", back_populates="medicamento")
+
+# Modelo para User
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="user")
+    is_active = Column(String, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
+
+# Modelo para RefreshToken
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, nullable=False)
+    user_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)

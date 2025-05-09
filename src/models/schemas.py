@@ -1,7 +1,46 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, date
 from enum import Enum
+
+# Authentication schemas
+class TokenData(BaseModel):
+    email: str
+    role: str
+
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+class RefreshTokenInfo(BaseModel):
+    id: int
+    token: str
+    user_id: int
+    created_at: datetime
+    expires_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserBase(BaseModel):
+    email: EmailStr
+    role: str = "user"
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 class TipoMovimiento(str, Enum):
     Entrada = "Entrada"

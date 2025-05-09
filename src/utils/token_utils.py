@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from src.db.database import get_db
-from src.models.database_models import RefreshToken
+from src.models.database_models import RefreshToken, User
 from src.core.config import REFRESH_TOKEN_EXPIRE_DAYS, MAX_REFRESH_TOKENS
 import logging
 

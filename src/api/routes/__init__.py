@@ -5,6 +5,7 @@ from .medicamentos import router as medicamentos_router
 from .movimientos import router as movimientos_router
 from .reportes import router as reportes_router
 from .alertas import router as alertas_router  # Nuevo
+from .predicciones import router as predicciones_router  # Nuevo
 
 router = APIRouter()
 router.include_router(auth_router, prefix="/auth", tags=["auth"])
