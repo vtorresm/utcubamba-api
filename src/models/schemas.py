@@ -48,6 +48,7 @@ class MedicamentoBase(BaseModel):
     nombre_generico: Optional[str] = None
     categoria_id: int
     stock_actual: int = 0
+    stock_maximo: Optional[int] = None  # Nuevo campo
     precio_unitario: float
     disponibilidad: str
     fecha_vencimiento: Optional[datetime] = None
@@ -152,5 +153,41 @@ class HistorialAlertaCreate(HistorialAlertaBase):
 class HistorialAlerta(HistorialAlertaBase):
     historial_id: int
     fecha: datetime
+    class Config:
+        from_attributes = True
+
+class UsoHistoricoBase(BaseModel):
+    medicamento_id: int
+    mes: int
+    anio: int
+    region: str
+    temporada: str
+    uso_previsto: int
+    uso_real: int
+
+class UsoHistoricoCreate(UsoHistoricoBase):
+    pass
+
+class UsoHistorico(UsoHistoricoBase):
+    historico_id: int
+    fecha_registro: datetime
+    class Config:
+        from_attributes = True
+
+class PrediccionBase(BaseModel):
+    medicamento_id: int
+    mes: int
+    anio: int
+    region: str
+    temporada: str
+    uso_previsto: int
+    uso_predicho: float
+
+class PrediccionCreate(PrediccionBase):
+    pass
+
+class Prediccion(PrediccionBase):
+    prediccion_id: int
+    fecha_prediccion: datetime
     class Config:
         from_attributes = True

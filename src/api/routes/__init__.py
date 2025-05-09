@@ -13,3 +13,4 @@ router.include_router(medicamentos_router, prefix="/medicamentos", tags=["medica
 router.include_router(movimientos_router, prefix="/movimientos", tags=["movimientos"])
 router.include_router(reportes_router, prefix="/reportes", tags=["reportes"])
 router.include_router(alertas_router, prefix="/alertas", tags=["alertas"])  # Nuevo
+router.include_router(predicciones_router, prefix="/predicciones", tags=["predicciones"])  # Nuevo

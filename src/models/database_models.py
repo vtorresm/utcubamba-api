@@ -36,6 +36,7 @@ class Medicamento(Base):
     nombre_generico = Column(String, nullable=True)
     categoria_id = Column(Integer, ForeignKey("categorias.categoria_id"), nullable=False)
     stock_actual = Column(Integer, nullable=False, default=0)
+    stock_maximo = Column(Integer, nullable=True)  # Nuevo campo
     precio_unitario = Column(Integer, nullable=False)
     disponibilidad = Column(String, nullable=False)
     fecha_vencimiento = Column(DateTime, nullable=True)
@@ -91,3 +92,35 @@ class HistorialAlerta(Base):
     fecha = Column(DateTime, nullable=False, default=datetime.utcnow)
     observaciones = Column(Text, nullable=True)
     alerta = relationship("Alerta", back_populates="historial")
+
+# Nueva tabla: UsoHistoricoModel
+class UsoHistorico(Base):
+    __tablename__ = "uso_historico"
+    historico_id = Column(Integer, primary_key=True, index=True)
+    medicamento_id = Column(Integer, ForeignKey("medicamentos.medicamento_id"), nullable=False)
+    mes = Column(Integer, nullable=False)
+    anio = Column(Integer, nullable=False)
+    region = Column(String, nullable=False)
+    temporada = Column(String, nullable=False)
+    uso_previsto = Column(Integer, nullable=False)
+    uso_real = Column(Integer, nullable=False)
+    fecha_registro = Column(DateTime, nullable=False, default=datetime.utcnow)
+    medicamento = relationship("Medicamento", back_populates="uso_historico")
+
+# Nueva tabla: PrediccionModel
+class Prediccion(Base):
+    __tablename__ = "predicciones"
+    prediccion_id = Column(Integer, primary_key=True, index=True)
+    medicamento_id = Column(Integer, ForeignKey("medicamentos.medicamento_id"), nullable=False)
+    mes = Column(Integer, nullable=False)
+    anio = Column(Integer, nullable=False)
+    region = Column(String, nullable=False)
+    temporada = Column(String, nullable=False)
+    uso_previsto = Column(Integer, nullable=False)
+    uso_predicho = Column(Float, nullable=False)
+    fecha_prediccion = Column(DateTime, nullable=False, default=datetime.utcnow)
+    medicamento = relationship("Medicamento", back_populates="predicciones")
+
+# Actualizar Medicamento
+Medicamento.uso_historico = relationship("UsoHistorico", back_populates="medicamento")
+Medicamento.predicciones = relationship("Prediccion", back_populates="medicamento")
