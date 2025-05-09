@@ -5,6 +5,7 @@ from src.db.database import get_db
 from src.models.database_models import Alerta as AlertaModel, HistorialAlerta as HistorialAlertaModel, Medicamento as MedicamentoModel
 from src.models.schemas import Alerta, AlertaCreate, AlertaUpdate, HistorialAlerta, HistorialAlertaCreate
 from src.api.dependencies import get_current_user, require_role
+from src.utils.email_utils import send_email
 import logging
 from datetime import datetime
 
@@ -45,14 +46,15 @@ def create_alerta(
         logger.error(f"Medicamento {alerta.medicamento_id} not found")
         raise HTTPException(status_code=404, detail="Medicamento no encontrado")
 
-    # Verificar si ya existe una alerta pendiente para este medicamento
+    # Verificar si ya existe una alerta pendiente para este medicamento y tipo
     existing_alerta = db.query(AlertaModel).filter(
         AlertaModel.medicamento_id == alerta.medicamento_id,
+        AlertaModel.tipo_alerta == alerta.tipo_alerta,
         AlertaModel.estado == "Pendiente"
     ).first()
     if existing_alerta:
-        logger.warning(f"Alerta pendiente ya existe para medicamento {alerta.medicamento_id}")
-        raise HTTPException(status_code=400, detail="Ya existe una alerta pendiente para este medicamento")
+        logger.warning(f"Alerta pendiente ya existe para medicamento {alerta.medicamento_id}, tipo: {alerta.tipo_alerta}")
+        raise HTTPException(status_code=400, detail=f"Ya existe una alerta pendiente de tipo {alerta.tipo_alerta} para este medicamento")
 
     db_alerta = AlertaModel(
         medicamento_id=alerta.medicamento_id,
@@ -73,6 +75,12 @@ def create_alerta(
     )
     db.add(historial)
     db.commit()
+
+    # Enviar notificación por email
+    send_email(
+        subject=f"Nueva Alerta: {alerta.tipo_alerta} para {medicamento.nombre_comercial}",
+        body=f"Se ha generado una alerta manual de tipo {alerta.tipo_alerta} para el medicamento {medicamento.nombre_comercial}."
+    )
 
     logger.info(f"Alerta created: {db_alerta.alerta_id}")
     return db_alerta
