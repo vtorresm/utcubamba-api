@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.api.routes import auth, users, medicamentos
+from src.api.routes import auth, users, medicamentos, reportes, movimientos, alertas, predicciones
 from src.db.init_db import init_db
 from src.core.logging import setup_logging
 
@@ -37,6 +37,8 @@ app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(medicamentos.router, prefix="/medicamentos", tags=["medicamentos"])
 app.include_router(reportes.router, prefix="/reportes", tags=["reportes"])  # Nuevo router
 app.include_router(movimientos.router, prefix="/movimientos", tags=["movimientos"])  # Nuevo router
+app.include_router(alertas.router, prefix="/alertas", tags=["alertas"])  # Nuevo router
+app.include_router(predicciones.router, prefix="/predicciones", tags=["predicciones"])  # Nuevo router
 
 if __name__ == "__main__":
     import uvicorn
