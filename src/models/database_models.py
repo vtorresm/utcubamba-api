@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey, Text, Float
+from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey, Text, Float, Boolean
 from sqlalchemy.orm import relationship
 from src.db.database import Base
 import enum
@@ -129,10 +129,11 @@ Medicamento.predicciones = relationship("Prediccion", back_populates="medicament
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False, default="user")
-    is_active = Column(String, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=True, onupdate=datetime.utcnow)
 

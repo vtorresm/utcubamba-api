@@ -8,6 +8,10 @@ class TokenData(BaseModel):
     email: str
     role: str
 
+class LoginRequest(BaseModel):
+    username: EmailStr
+    password: str
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str
@@ -27,6 +31,7 @@ class RefreshTokenInfo(BaseModel):
         from_attributes = True
 
 class UserBase(BaseModel):
+    name: str
     email: EmailStr
     role: str = "user"
 

@@ -8,11 +8,11 @@ def setup_logging():
     
     # Configurar el logger raíz
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)  # Nivel por defecto: INFO
+    logger.setLevel(logging.DEBUG)  # Nivel por defecto: DEBUG
     
     # Formato de los logs
     log_format = logging.Formatter(
-        "%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+        "%(asctime)s [%(levelname)s] [%(name)s] [%(filename)s:%(lineno)d] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     

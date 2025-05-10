@@ -15,23 +15,45 @@ logger = logging.getLogger(__name__)
 
 @router.post("/", response_model=User)
 def create_user(user: UserCreate, current_user: UserModel = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    logger.info(f"Attempting to create user with email: {user.email}")
-    db_user = UserModel(
-        name=user.name,
-        email=user.email,
-        password=get_password_hash(user.password),
-        role=user.role
-    )
-    db.add(db_user)
     try:
-        db.commit()
-        db.refresh(db_user)
-        logger.info(f"User created successfully: {user.email}")
-        return db_user
-    except IntegrityError:
-        db.rollback()
-        logger.error(f"Failed to create user: Email {user.email} already registered")
-        raise HTTPException(status_code=400, detail="Email already registered")
+        logger.debug(f"Received create user request: {user.dict()}")
+        logger.debug(f"Admin user making request: {current_user.email}")
+        
+        # Verificar si el email ya existe
+        existing_user = db.query(UserModel).filter(UserModel.email == user.email).first()
+        if existing_user:
+            logger.warning(f"Email already exists: {user.email}")
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Crear el nuevo usuario
+        logger.debug("Creating new user object...")
+        db_user = UserModel(
+            name=user.name,
+            email=user.email,
+            hashed_password=get_password_hash(user.password),
+            role=user.role,
+            is_active=True
+        )
+        
+        logger.debug("Adding user to database...")
+        db.add(db_user)
+        
+        try:
+            logger.debug("Committing transaction...")
+            db.commit()
+            logger.debug("Refreshing user object...")
+            db.refresh(db_user)
+            logger.info(f"User created successfully: {user.email}")
+            return db_user
+            
+        except IntegrityError as e:
+            db.rollback()
+            logger.error(f"Database integrity error: {str(e)}")
+            raise HTTPException(status_code=400, detail="Database integrity error")
+            
+    except Exception as e:
+        logger.exception(f"Error creating user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.get("/", response_model=List[User])
 def read_users(skip: int = 0, limit: int = 100, current_user: UserModel = Depends(require_role("admin")), db: Session = Depends(get_db)):
@@ -76,11 +98,11 @@ def update_user(user_id: int, user: UserCreate, current_user: UserModel = Depend
         logger.error(f"User ID: {user_id} not found for update")
         raise HTTPException(status_code=404, detail="User not found")
     
-    password_changed = not verify_password(user.password, db_user.password)
+    password_changed = not verify_password(user.password, db_user.hashed_password)
     
     db_user.name = user.name
     db_user.email = user.email
-    db_user.password = get_password_hash(user.password)
+    db_user.hashed_password = get_password_hash(user.password)
     db_user.role = user.role
     
     if password_changed:

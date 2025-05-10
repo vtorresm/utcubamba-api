@@ -204,29 +204,59 @@ def create_movimiento(
     db: Session = Depends(get_db),
     current_user: MedicamentoModel = Depends(require_role("admin"))
 ):
-    logger.info(f"Creating movimiento by admin: {current_user.email}")
+    try:
+        logger.info(f"Creating movimiento by admin: {current_user.email}")
+        logger.debug(f"Movimiento data: {movimiento.dict()}")
 
-    medicamento = db.query(MedicamentoModel).filter(MedicamentoModel.medicamento_id == movimiento.medicamento_id).first()
-    if not medicamento:
-        logger.error(f"Medicamento {movimiento.medicamento_id} not found")
-        raise HTTPException(status_code=404, detail="Medicamento no encontrado")
+        medicamento = db.query(MedicamentoModel).filter(MedicamentoModel.medicamento_id == movimiento.medicamento_id).first()
+        if not medicamento:
+            logger.error(f"Medicamento {movimiento.medicamento_id} not found")
+            raise HTTPException(status_code=404, detail="Medicamento no encontrado")
 
-    db_movimiento = MovimientoModel(
-        fecha=datetime.utcnow(),
-        tipo_movimiento=movimiento.tipo_movimiento,
-        medicamento_id=movimiento.medicamento_id,
-        cantidad=movimiento.cantidad,
-        observaciones=movimiento.observaciones
-    )
-    db.add(db_movimiento)
-    db.commit()
-    db.refresh(db_movimiento)
+        # Validar tipo de movimiento
+        if movimiento.tipo_movimiento not in ["Entrada", "Salida"]:
+            logger.error(f"Tipo de movimiento inválido: {movimiento.tipo_movimiento}")
+            raise HTTPException(status_code=400, detail="Tipo de movimiento debe ser 'Entrada' o 'Salida'")
 
-    # Actualizar stock y verificar alertas
-    update_stock_and_check_alerts(medicamento, db_movimiento, db)
+        # Validar cantidad
+        if movimiento.cantidad <= 0:
+            logger.error(f"Cantidad inválida: {movimiento.cantidad}")
+            raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
 
-    logger.info(f"Movimiento created: {db_movimiento.movimiento_id}")
-    return db_movimiento
+        # Validar stock suficiente para salidas
+        if movimiento.tipo_movimiento == "Salida" and medicamento.stock_actual < movimiento.cantidad:
+            logger.error(f"Stock insuficiente. Actual: {medicamento.stock_actual}, Solicitado: {movimiento.cantidad}")
+            raise HTTPException(status_code=400, detail=f"Stock insuficiente. Stock actual: {medicamento.stock_actual}")
+
+        db_movimiento = MovimientoModel(
+            fecha=datetime.utcnow(),
+            tipo_movimiento=movimiento.tipo_movimiento,
+            medicamento_id=movimiento.medicamento_id,
+            cantidad=movimiento.cantidad,
+            observaciones=movimiento.observaciones
+        )
+
+        try:
+            db.add(db_movimiento)
+            db.commit()
+            db.refresh(db_movimiento)
+            logger.debug(f"Movimiento base created: {db_movimiento.movimiento_id}")
+
+            # Actualizar stock y verificar alertas
+            update_stock_and_check_alerts(medicamento, db_movimiento, db)
+            logger.info(f"Movimiento created successfully: {db_movimiento.movimiento_id}")
+            return db_movimiento
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Database error creating movimiento: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error al crear movimiento: {str(e)}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unexpected error creating movimiento: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
 @router.get("/{movimiento_id}", response_model=Movimiento)
 def get_movimiento(
