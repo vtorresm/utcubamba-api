@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from src.db.database import get_db
 from src.models.database_models import Movimiento as MovimientoModel, Medicamento as MedicamentoModel, Alerta as AlertaModel, HistorialAlerta as HistorialAlertaModel
-from src.models.schemas import Movimiento, MovimientoCreate
+from src.models.schemas import Movimiento, MovimientoCreate, TipoMovimiento
 from src.api.dependencies import get_current_user, require_role
 from src.utils.email_utils import send_email
 import logging
@@ -214,7 +214,10 @@ def create_movimiento(
             raise HTTPException(status_code=404, detail="Medicamento no encontrado")
 
         # Validar tipo de movimiento
-        if movimiento.tipo_movimiento not in ["Entrada", "Salida"]:
+        try:
+            tipo_movimiento = TipoMovimiento(movimiento.tipo_movimiento)
+            logger.debug(f"Tipo de movimiento validado: {tipo_movimiento.value}")
+        except ValueError:
             logger.error(f"Tipo de movimiento inválido: {movimiento.tipo_movimiento}")
             raise HTTPException(status_code=400, detail="Tipo de movimiento debe ser 'Entrada' o 'Salida'")
 
@@ -224,13 +227,13 @@ def create_movimiento(
             raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
 
         # Validar stock suficiente para salidas
-        if movimiento.tipo_movimiento == "Salida" and medicamento.stock_actual < movimiento.cantidad:
+        if tipo_movimiento == TipoMovimiento.salida and medicamento.stock_actual < movimiento.cantidad:
             logger.error(f"Stock insuficiente. Actual: {medicamento.stock_actual}, Solicitado: {movimiento.cantidad}")
             raise HTTPException(status_code=400, detail=f"Stock insuficiente. Stock actual: {medicamento.stock_actual}")
 
         db_movimiento = MovimientoModel(
             fecha=datetime.utcnow(),
-            tipo_movimiento=movimiento.tipo_movimiento,
+            tipo_movimiento=tipo_movimiento,
             medicamento_id=movimiento.medicamento_id,
             cantidad=movimiento.cantidad,
             observaciones=movimiento.observaciones
