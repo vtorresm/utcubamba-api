@@ -12,24 +12,6 @@ class LoginRequest(BaseModel):
     username: EmailStr
     password: str
 
-class Token(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
-class RefreshTokenInfo(BaseModel):
-    id: int
-    token: str
-    user_id: int
-    created_at: datetime
-    expires_at: datetime
-
-    class Config:
-        from_attributes = True
-
 class UserBase(BaseModel):
     name: str
     email: EmailStr
@@ -43,6 +25,31 @@ class User(UserBase):
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: Optional[dict] = None
+
+class AuthResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: User
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+class RefreshTokenInfo(BaseModel):
+    id: int
+    token: str
+    user_id: int
+    created_at: datetime
+    expires_at: datetime
 
     class Config:
         from_attributes = True

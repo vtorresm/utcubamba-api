@@ -7,6 +7,7 @@ from src.core.security import verify_password, get_password_hash, create_access_
 from src.utils.token_utils import create_refresh_token, validate_refresh_token
 from src.db.database import get_db
 from src.models.schemas import Token, User, UserCreate, RefreshTokenRequest, LoginRequest
+from datetime import datetime
 from src.models.database_models import User as UserModel, RefreshToken
 from src.api.dependencies import get_current_user
 import logging
@@ -14,31 +15,84 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/register", response_model=User)
-def register(user: UserCreate, current_user: UserModel = Depends(get_current_user), db: Session = Depends(get_db)):
-    logger.info(f"Attempting to register user with email: {user.email}")
-    if user.role != "user" and current_user.role != "admin":
-        logger.warning(f"Non-admin user {current_user.email} attempted to assign role: {user.role}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can assign roles"
-        )
-    db_user = UserModel(
-        name=user.name,
-        email=user.email,
-        hashed_password=get_password_hash(user.password),
-        role=user.role
-    )
-    db.add(db_user)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(user: UserCreate, db: Session = Depends(get_db)):
     try:
+        logger.info(f"Attempting to register user with email: {user.email}")
+        
+        # Verificar si el correo ya existe
+        existing_user = db.query(UserModel).filter(UserModel.email == user.email).first()
+        if existing_user:
+            logger.warning(f"Registration attempt with existing email: {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este correo electrónico ya está registrado"
+            )
+        
+        # Para registro inicial, siempre asignar rol 'user'
+        user.role = "user"
+        
+        # Crear nuevo usuario
+        db_user = UserModel(
+            name=user.name,
+            email=user.email,
+            hashed_password=get_password_hash(user.password),
+            role=user.role,
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+        
+        db.add(db_user)
         db.commit()
         db.refresh(db_user)
+        
         logger.info(f"User registered successfully: {user.email}")
-        return db_user
-    except IntegrityError:
+        
+        # Generar tokens
+        access_token = create_access_token(data={"sub": db_user.email, "role": db_user.role})
+        if not access_token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al generar el token de acceso"
+            )
+            
+        refresh_token = create_refresh_token(db_user.id, db)
+        if not refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al generar el token de refresco"
+            )
+        
+        # Crear respuesta
+        response = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": db_user.id,
+                "email": db_user.email,
+                "name": db_user.name,
+                "role": db_user.role,
+                "is_active": db_user.is_active,
+                "created_at": db_user.created_at.isoformat(),
+                "updated_at": db_user.updated_at.isoformat() if db_user.updated_at else None
+            },
+            "message": "Usuario registrado exitosamente"
+        }
+        
+        logger.debug(f"Registration response prepared: {response}")
+        return response
+        
+    except HTTPException as he:
+        logger.error(f"HTTP Exception during registration: {str(he)}")
+        raise he
+    except Exception as e:
         db.rollback()
-        logger.error(f"Failed to register user: Email {user.email} already registered")
-        raise HTTPException(status_code=400, detail="Email already registered")
+        logger.error(f"Error during registration: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor al procesar el registro"
+        )
 
 @router.post("/token/form")
 def login_for_access_token_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

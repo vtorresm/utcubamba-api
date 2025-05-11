@@ -13,9 +13,14 @@ DB_CONFIG = {
 }
 
 # Configuración de JWT
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "tu-clave-super-secreta-de-256-bits-debe-ser-muy-larga-y-segura-para-produccion")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 MAX_REFRESH_TOKENS = 5  # Límite máximo de refresh tokens por usuario
 ALLOWED_ROLES = {"user", "admin"}  # Roles permitidos
+
+# Validar que SECRET_KEY esté configurada
+if not SECRET_KEY or SECRET_KEY == "tu-clave-super-secreta-de-256-bits-debe-ser-muy-larga-y-segura-para-produccion":
+    import secrets
+    SECRET_KEY = secrets.token_urlsafe(32)  # Generar una clave segura si no está configurada
