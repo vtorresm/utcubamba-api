@@ -5,8 +5,8 @@ import enum
 from datetime import datetime
 
 class TipoMovimiento(enum.Enum):
-    entrada = "entrada"
-    salida = "salida"
+    Entrada = "Entrada"
+    Salida = "Salida"
 
 class Categoria(Base):
     __tablename__ = "categorias"

@@ -48,8 +48,8 @@ class User(UserBase):
         from_attributes = True
 
 class TipoMovimiento(str, Enum):
-    entrada = "entrada"
-    salida = "salida"
+    Entrada = "Entrada"
+    Salida = "Salida"
 
 class CategoriaBase(BaseModel):
     nombre: str

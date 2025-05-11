@@ -236,7 +236,7 @@ def get_uso_historico(
         query = query.filter(UsoHistoricoModel.anio == anio)
     return query.offset(skip).limit(limit).all()
 
-@router.post("/predicciones/", response_model=Prediccion)
+@router.post("/", response_model=Prediccion)
 def create_prediccion(
     prediccion: PrediccionCreate,
     db: Session = Depends(get_db),
@@ -305,7 +305,7 @@ def create_prediccion(
     logger.info(f"Prediccion created: {db_prediccion.prediccion_id}")
     return db_prediccion
 
-@router.get("/predicciones/", response_model=list[Prediccion])
+@router.get("/", response_model=list[Prediccion])
 def get_predicciones(
     medicamento_id: int = None,
     mes: int = None,

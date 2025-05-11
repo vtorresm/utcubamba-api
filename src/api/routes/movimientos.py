@@ -227,7 +227,7 @@ def create_movimiento(
             raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
 
         # Validar stock suficiente para salidas
-        if tipo_movimiento == TipoMovimiento.salida and medicamento.stock_actual < movimiento.cantidad:
+        if tipo_movimiento == TipoMovimiento.Salida and medicamento.stock_actual < movimiento.cantidad:
             logger.error(f"Stock insuficiente. Actual: {medicamento.stock_actual}, Solicitado: {movimiento.cantidad}")
             raise HTTPException(status_code=400, detail=f"Stock insuficiente. Stock actual: {medicamento.stock_actual}")
 
