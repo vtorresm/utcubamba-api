@@ -25,11 +25,12 @@ app = FastAPI(
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:9002"],  # URL del frontend
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],  # URLs del frontend
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
     expose_headers=["Content-Type"],
+    max_age=3600,
 )
 
 # Registrar rutas
