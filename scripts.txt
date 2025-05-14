@@ -1,0 +1,148 @@
+SELECT medicamento_id, nombre_comercial, nombre_generico, categoria_id, stock_actual, stock_maximo, precio_unitario, disponibilidad, fecha_vencimiento, lote, laboratorio, requiere_receta, condicion_id, tipo_toma_id
+	FROM public.medicamentos;
+
+
+INSERT INTO medicamentos (nombre_comercial, nombre_generico, categoria_id, stock_actual, stock_maximo, precio_unitario, disponibilidad, fecha_vencimiento, lote, laboratorio, requiere_receta, condicion_id, tipo_toma_id) VALUES
+('Panadol Forte', 'Paracetamol', 1, 150, 200, 5.50, 'Disponible', '2025-12-31', 'LOTE001', 'Bayer', 'No', 1, 1),
+('Amoxicilina 500mg', 'Amoxicilina', 2, 80, 100, 12.75, 'Disponible', '2026-06-15', 'LOTE002', 'GlaxoSmithKline', 'Si', 2, 2),
+('Ibuprofeno 400mg', 'Ibuprofeno', 1, 200, 250, 7.20, 'Disponible', '2025-11-01', 'LOTE003', 'Pfizer', 'No', 1, 1),
+('Omeprazol 20mg', 'Omeprazol', 3, 120, 150, 9.00, 'Disponible', '2026-03-20', 'LOTE004', 'AstraZeneca', 'No', 3, 4),
+('Loratadina 10mg', 'Loratadina', 4, 180, 200, 6.80, 'Disponible', '2025-10-10', 'LOTE005', 'Schering-Plough', 'No', 1, 1),
+('Sertralina 50mg', 'Sertralina', 5, 60, 80, 25.50, 'Agotado', '2026-08-01', 'LOTE006', 'Pfizer', 'Si', 4, 1),
+('Atorvastatina 20mg', 'Atorvastatina', 6, 90, 100, 18.90, 'Disponible', '2025-09-01', 'LOTE007', 'Pfizer', 'Si', 5, 1),
+('Metformina 850mg', 'Metformina', 7, 150, 180, 10.20, 'Disponible', '2026-07-25', 'LOTE008', 'Merck', 'Si', 17, 1),
+('Salbutamol Inhalador', 'Salbutamol', 8, 40, 50, 35.00, 'Disponible', '2025-12-01', 'LOTE009', 'GlaxoSmithKline', 'Si', 2, 5),
+('Losartan 50mg', 'Losartan', 6, 110, 120, 14.50, 'Disponible', '2026-04-18', 'LOTE010', 'Merck Sharp & Dohme', 'Si', 5, 1),
+('Amlodipino 5mg', 'Amlodipino', 6, 130, 150, 11.80, 'Disponible', '2025-11-20', 'LOTE011', 'Pfizer', 'Si', 5, 1),
+('Cetirizina 10mg', 'Cetirizina', 4, 170, 190, 7.50, 'Disponible', '2026-02-14', 'LOTE012', 'Novartis', 'No', 1, 1),
+('Prednisona 5mg', 'Prednisona', 9, 70, 80, 9.50, 'Disponible', '2025-10-30', 'LOTE013', 'Various', 'Si', 2, 1),
+('Clonazepam 2mg', 'Clonazepam', 5, 30, 40, 30.00, 'Disponible', '2026-09-10', 'LOTE014', 'Roche', 'Si', 4, 1),
+('Diazepam 10mg', 'Diazepam', 5, 35, 45, 28.00, 'Disponible', '2025-08-05', 'LOTE015', 'Roche', 'Si', 4, 3),
+('Tramadol 50mg', 'Tramadol', 1, 50, 60, 16.00, 'Agotado', '2026-05-22', 'LOTE016', 'Grünenthal', 'Si', 1, 1),
+('Naproxeno 500mg', 'Naproxeno', 1, 160, 180, 8.50, 'Disponible', '2025-12-15', 'LOTE017', 'Bayer', 'No', 1, 1),
+('Diclofenaco 75mg', 'Diclofenaco', 1, 140, 160, 9.80, 'Disponible', '2026-01-30', 'LOTE018', 'Novartis', 'No', 1, 3),
+('Furosemida 40mg', 'Furosemida', 10, 90, 100, 11.00, 'Disponible', '2025-11-10', 'LOTE019', 'Sanofi', 'Si', 5, 1),
+('Hidroclorotiazida 25mg', 'Hidroclorotiazida', 10, 120, 140, 8.90, 'Disponible', '2026-03-01', 'LOTE020', 'Various', 'Si', 5, 1),
+('Warfarina 5mg', 'Warfarina', 11, 50, 60, 20.00, 'Disponible', '2025-09-15', 'LOTE021', 'Bristol-Myers Squibb', 'Si', 5, 1),
+('Clopidogrel 75mg', 'Clopidogrel', 11, 70, 80, 28.00, 'Disponible', '2026-07-01', 'LOTE022', 'Sanofi', 'Si', 5, 1),
+('Simvastatina 40mg', 'Simvastatina', 6, 100, 110, 15.00, 'Disponible', '2025-10-20', 'LOTE023', 'Merck', 'Si', 5, 1),
+('Levotiroxina 100mcg', 'Levotiroxina', 12, 80, 90, 13.00, 'Disponible', '2026-04-05', 'LOTE024', 'Various', 'Si', 1, 1),
+('Metronidazol 500mg', 'Metronidazol', 2, 110, 120, 10.50, 'Disponible', '2025-12-25', 'LOTE025', 'Sanofi', 'Si', 2, 1),
+('Ciprofloxacino 500mg', 'Ciprofloxacino', 2, 95, 105, 14.00, 'Disponible', '2026-06-01', 'LOTE026', 'Bayer', 'Si', 2, 1),
+('Azitromicina 500mg', 'Azitromicina', 2, 75, 85, 18.00, 'Disponible', '2025-11-05', 'LOTE027', 'Pfizer', 'Si', 2, 1),
+('Ranitidina 150mg', 'Ranitidina', 3, 130, 150, 7.00, 'Disponible', '2026-03-10', 'LOTE028', 'GlaxoSmithKline', 'No', 3, 1),
+('Esomeprazol 40mg', 'Esomeprazol', 3, 85, 95, 16.50, 'Disponible', '2025-10-15', 'LOTE029', 'AstraZeneca', 'No', 3, 4),
+('Dextrometorfano Jarabe', 'Dextrometorfano', 13, 100, 120, 9.00, 'Disponible', '2026-01-01', 'LOTE030', 'Various', 'No', 1, 6),
+('Loperamida 2mg', 'Loperamida', 14, 150, 170, 6.00, 'Disponible', '2025-09-20', 'LOTE031', 'Johnson & Johnson', 'No', 3, 1),
+('Ondansetrón 8mg', 'Ondansetrón', 5, 40, 50, 22.00, 'Disponible', '2026-08-15', 'LOTE032', 'GlaxoSmithKline', 'Si', 3, 1),
+('Metoclopramida 10mg', 'Metoclopramida', 5, 110, 130, 8.00, 'Disponible', '2025-12-05', 'LOTE033', 'Various', 'No', 3, 1),
+('Senósidos Jarabe', 'Senósidos', 14, 90, 100, 7.50, 'Disponible', '2026-02-28', 'LOTE034', 'Various', 'No', 3, 6),
+('Bisacodilo 5mg', 'Bisacodilo', 14, 120, 140, 6.50, 'Disponible', '2025-11-25', 'LOTE035', 'Boehringer Ingelheim', 'No', 3, 1),
+('Colágeno Hidrolizado', 'Colágeno Hidrolizado', 11, 70, 80, 30.00, 'Disponible', '2026-05-01', 'LOTE036', 'Various', 'No', 18, 7),
+('Vitamina C 500mg', 'Ácido Ascórbico', 6, 200, 220, 5.00, 'Disponible', '2027-01-01', 'LOTE037', 'Various', 'No', 18, 1),
+('Vitamina D3 1000IU', 'Colecalciferol', 6, 150, 170, 10.00, 'Disponible', '2027-02-01', 'LOTE038', 'Various', 'No', 18, 1),
+('Complejo B', 'Vitaminas del Complejo B', 6, 130, 150, 8.00, 'Disponible', '2026-12-01', 'LOTE039', 'Various', 'No', 18, 1),
+('Sulfato Ferroso', 'Sulfato Ferroso', 14, 100, 110, 7.00, 'Disponible', '2025-10-01', 'LOTE040', 'Various', 'No', 18, 1),
+('Ácido Fólico', 'Ácido Fólico', 14, 110, 120, 6.00, 'Disponible', '2026-09-01', 'LOTE041', 'Various', 'No', 18, 1),
+('Calcio + Vitamina D', 'Calcio y Colecalciferol', 6, 90, 100, 15.00, 'Disponible', '2027-03-01', 'LOTE042', 'Various', 'No', 18, 1),
+('Melatonina 5mg', 'Melatonina', 5, 60, 70, 12.00, 'Disponible', '2026-04-20', 'LOTE043', 'Various', 'No', 4, 1),
+('Valeriana Extracto', 'Valeriana', 5, 80, 90, 9.00, 'Disponible', '2025-11-15', 'LOTE044', 'Various', 'No', 4, 1),
+('Ginkgo Biloba', 'Ginkgo Biloba', 6, 70, 80, 11.00, 'Disponible', '2026-05-10', 'LOTE045', 'Various', 'No', 18, 1),
+('glucosamina condroitina', 'Glucosamina y Condroitina', 1, 50, 60, 25.00, 'Disponible', '2025-12-10', 'LOTE046', 'Various', 'No', 1, 1),
+('Probióticos', 'Cultivos Probióticos', 14, 100, 110, 18.00, 'Disponible', '2026-07-15', 'LOTE047', 'Various', 'No', 3, 1),
+('Fibra en Polvo', 'Fibra Dietética', 14, 120, 130, 10.00, 'Disponible', '2026-01-20', 'LOTE048', 'Various', 'No', 3, 7),
+('Crema Hidrocortisona', 'Hidrocortisona', 9, 80, 90, 13.50, 'Disponible', '2025-10-25', 'LOTE049', 'Various', 'No', 2, 9),
+('Ungüento Antibiótico', 'Bacitracina/Neomicina/Polimixina B', 2, 90, 100, 11.50, 'Disponible', '2026-03-05', 'LOTE050', 'Various', 'No', 2, 9);
+
+--Condicion_id
+
+SELECT condicion_id, nombre, descripcion
+	FROM public.condiciones;
+
+
+INSERT INTO condiciones (nombre, descripcion) VALUES
+('Dolor leve a moderado', 'Condiciones que causan dolor de intensidad baja a media.'),
+('Infeccion bacteriana', 'Enfermedades causadas por bacterias que requieren tratamiento antibiotico.'),
+('Acidez estomacal', 'Sensacion de ardor en el estomago o pecho causada por reflujo \u00e1cido.'),
+--('Alergias', 'Reacciones del sistema inmunitario a sustancias normalmente inofensivas.'),
+('Trastornos de ansiedad', 'Afecciones de salud mental caracterizadas por preocupacion y miedo excesivos.'),
+('Hipertension', 'Presion arterial persistentemente alta.'),
+('Diabetes mellitus', 'Enfermedad cronica que afecta la forma en que el cuerpo procesa el azucar en sangre.'),
+--('Asma', 'Afeccion cronica que inflama y estrecha las vias respiratorias.'),
+('Inflamacion', 'Respuesta del cuerpo a una lesion o infeccion, caracterizada por enrojecimiento, hinchazon, calor y dolor.'),
+('Estreñimiento', 'Dificultad para evacuar las heces o defecacion poco frecuente.');
+
+
+--Categoria
+
+SELECT categoria_id, nombre, descripcion
+	FROM public.categorias;
+
+INSERT INTO categorias (nombre, descripcion) VALUES
+('Analguesicos', 'Medicamentos para aliviar el dolor.'),
+('Antibioticos', 'Medicamentos para tratar infecciones bacterianas.'),
+('Antiacidos', 'Medicamentos para neutralizar el \u00e1cido estomacal.'),
+('Antihistaminicos', 'Medicamentos para tratar alergias.'),
+('Psicotrepicos', 'Medicamentos que afectan el sistema nervioso central.'),
+('Cardiovasculares', 'Medicamentos para afecciones del coraz\u00f3n y vasos sangu\u00edneos.'),
+('Antidiabeticos', 'Medicamentos para controlar los niveles de az\u00facar en sangre.'),
+('Respiratorios', 'Medicamentos para afecciones del sistema respiratorio.'),
+('Corticosteroides', 'Medicamentos con efectos antiinflamatorios e inmunosupresores.'),
+('Diureticos', 'Medicamentos que aumentan la producci\u00f3n de orina.');
+
+
+--Alerta
+
+SELECT alerta_id, medicamento_id, tipo_alerta, estado, fecha_creacion, fecha_actualizacion
+	FROM public.alertas;
+
+INSERT INTO alertas (medicamento_id, tipo_alerta, estado, fecha_creacion, fecha_actualizacion) VALUES
+(507, 'Stock bajo', 'Pendiente', '2023-10-26 10:00:00', NULL),
+(5, 'Próximo a vencer', 'Pendiente', '2023-11-01 09:30:00', NULL),
+(510, 'Stock bajo', 'Resuelta', '2023-10-28 11:15:00', '2023-10-29 14:00:00'),
+(511, 'Stock máximo alcanzado', 'Resuelta', '2023-11-05 14:00:00', '2023-11-05 15:30:00'),
+(512, 'Próximo a vencer', 'Pendiente', '2023-11-10 08:00:00', NULL),
+(513, 'Stock bajo', 'Pendiente', '2023-11-12 16:45:00', NULL),
+(511, 'Vencido', 'Pendiente', '2023-11-15 10:00:00', NULL),
+(511, 'Stock bajo', 'Resuelta', '2023-11-18 09:00:00', '2023-11-20 11:00:00'),
+(511, 'Próximo a vencer', 'Pendiente', '2023-11-22 13:30:00', NULL),
+(512, 'Stock bajo', 'Pendiente', '2023-11-25 10:00:00', NULL),
+(530, 'Stock máximo alcanzado', 'Resuelta', '2023-11-28 15:00:00', '2023-11-28 16:00:00'),
+(517, 'Vencido', 'Resuelta', '2023-12-01 09:45:00', '2023-12-02 10:00:00'),
+(518, 'Stock bajo', 'Pendiente', '2023-12-05 11:00:00', NULL),
+(535, 'Próximo a vencer', 'Pendiente', '2023-12-08 14:00:00', NULL),
+(514, 'Stock bajo', 'Resuelta', '2023-12-10 10:30:00', '2023-12-11 09:00:00'),
+(540, 'Vencido', 'Pendiente', '2023-12-12 16:00:00', NULL),
+(522, 'Stock bajo', 'Pendiente', '2023-12-15 08:00:00', NULL),
+(545, 'Próximo a vencer', 'Resuelta', '2023-12-18 13:00:00', '2023-12-19 10:00:00'),
+(526, 'Stock bajo', 'Pendiente', '2024-01-05 09:00:00', NULL),
+(510, 'Vencido', 'Resuelta', '2024-01-10 11:00:00', '2024-01-10 12:00:00'),
+(511, 'Stock bajo', 'Resuelta', '2024-01-12 14:00:00', '2024-01-13 15:00:00'),
+(516, 'Próximo a vencer', 'Pendiente', '2024-01-15 10:00:00', NULL),
+(521, 'Stock bajo', 'Pendiente', '2024-01-20 16:00:00', NULL),
+(526, 'Vencido', 'Pendiente', '2024-01-25 09:30:00', NULL),
+(531, 'Stock bajo', 'Pendiente', '2024-01-28 11:00:00', NULL);
+
+--users
+
+SELECT id, name, email, hashed_password, role, is_active, created_at, updated_at
+	FROM public.users;
+
+
+-- Insertar un nuevo usuario
+INSERT INTO users (
+    name,
+    email,
+    hashed_password,
+    role,
+    is_active
+) VALUES (
+    'Administrador',
+    'admin@example.com',
+    '12345678', -- Este es un hash de ejemplo, reemplazar con el hash real
+    'admin',
+    true
+) RETURNING *;
+
+-- Verificar el usuario insertado
+SELECT * FROM users WHERE email = 'admin@example.com';
