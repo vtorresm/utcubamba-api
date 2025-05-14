@@ -4,8 +4,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 
-# Cargar datos sintéticos
-df = pd.read_csv("synthetic_medicine_usage.csv")
+# Cargar datos
+df = pd.read_csv("data_entrenamiento.csv")
 
 # Codificar variables categóricas
 df = pd.get_dummies(df, columns=["medicamento_id", "region", "temporada"], drop_first=True)

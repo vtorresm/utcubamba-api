@@ -37,7 +37,7 @@ class Medicamento(Base):
     categoria_id = Column(Integer, ForeignKey("categorias.categoria_id"), nullable=False)
     stock_actual = Column(Integer, nullable=False, default=0)
     stock_maximo = Column(Integer, nullable=True)  # Nuevo campo
-    precio_unitario = Column(Integer, nullable=False)
+    precio_unitario = Column(Float, nullable=False)
     disponibilidad = Column(String, nullable=False)
     fecha_vencimiento = Column(DateTime, nullable=True)
     lote = Column(String, nullable=True)

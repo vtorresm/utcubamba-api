@@ -114,6 +114,10 @@ class MedicamentoCreate(MedicamentoBase):
 
 class Medicamento(MedicamentoBase):
     medicamento_id: int
+    categoria: Categoria
+    condicion: Optional[Condicion] = None
+    tipo_toma: Optional[TipoToma] = None
+    
     class Config:
         from_attributes = True
 

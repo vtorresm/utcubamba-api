@@ -3,7 +3,7 @@ from sklearn.ensemble import RandomForestRegressor
 import pandas as pd
 
 # Cargar datos
-df = pd.read_csv("synthetic_medicine_usage.csv")
+df = pd.read_csv("data_entrenamiento.csv")
 df = pd.get_dummies(df, columns=["medicamento_id", "region", "temporada"], drop_first=True)
 X = df.drop(["uso_real", "uso_real_dif"], axis=1)
 y = df["uso_real"]

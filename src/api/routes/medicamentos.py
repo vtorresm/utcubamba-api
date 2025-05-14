@@ -37,12 +37,44 @@ def create_medicamento(medicamento: MedicamentoCreate, current_user: Medicamento
 def read_medicamentos(
     skip: int = 0,
     limit: int = 100,
+    categoria: Optional[str] = None,
+    precio_min: Optional[float] = None,
+    precio_max: Optional[float] = None,
+    stock: Optional[str] = None,
+    laboratorio: Optional[str] = None,
+    requiere_receta: Optional[str] = None,
+    disponibilidad: Optional[str] = None,
     current_user: MedicamentoModel = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
-    logger.info(f"Listing medicamentos (skip={skip}, limit={limit}) by admin: {current_user.email}")
-    medicamentos = db.query(MedicamentoModel).offset(skip).limit(limit).all()
-    logger.debug(f"Retrieved {len(medicamentos)} medicamentos")
+    logger.info(f"Listing medicamentos with filters: skip={skip}, limit={limit}, categoria={categoria}, precio_min={precio_min}, precio_max={precio_max}, stock={stock}, laboratorio={laboratorio}, requiere_receta={requiere_receta}, disponibilidad={disponibilidad}")
+    
+    query = db.query(MedicamentoModel).options(
+        joinedload(MedicamentoModel.categoria),
+        joinedload(MedicamentoModel.condicion),
+        joinedload(MedicamentoModel.tipo_toma)
+    )
+
+    # Aplicar filtros
+    if categoria:
+        query = query.filter(MedicamentoModel.categoria_id == int(categoria))
+    if precio_min is not None:
+        query = query.filter(MedicamentoModel.precio_unitario >= precio_min)
+    if precio_max is not None:
+        query = query.filter(MedicamentoModel.precio_unitario <= precio_max)
+    if stock == 'disponible':
+        query = query.filter(MedicamentoModel.stock_actual > 0)
+    elif stock == 'agotado':
+        query = query.filter(MedicamentoModel.stock_actual == 0)
+    if laboratorio:
+        query = query.filter(MedicamentoModel.laboratorio == laboratorio)
+    if requiere_receta:
+        query = query.filter(MedicamentoModel.requiere_receta == (requiere_receta.lower() == 'si'))
+    if disponibilidad:
+        query = query.filter(MedicamentoModel.disponibilidad == disponibilidad)
+
+    medicamentos = query.offset(skip).limit(limit).all()
+    logger.debug(f"Retrieved {len(medicamentos)} medicamentos after applying filters")
     return medicamentos
 
 @router.get("/{medicamento_id}", response_model=Medicamento)

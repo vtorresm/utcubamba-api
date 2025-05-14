@@ -29,4 +29,4 @@ df["uso_prev_dif"] = df.groupby("medicamento_id")["uso_previsto"].diff().fillna(
 df["uso_real_dif"] = df.groupby("medicamento_id")["uso_real"].diff().fillna(0)
 
 # Guardar datos
-df.to_csv("synthetic_medicine_usage.csv", index=False)
+df.to_csv("data_entrenamiento.csv", index=False)
