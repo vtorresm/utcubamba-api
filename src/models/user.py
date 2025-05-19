@@ -1,8 +1,11 @@
-from sqlalchemy import Column, Integer, String, Enum, Date, Boolean
+from sqlalchemy import Column, Integer, String, Enum, Date, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.core.database import Base
 from passlib.context import CryptContext
 import enum
+from typing import List
+from .password_reset_token import PasswordResetToken
 
 # Definir los roles como un Enum
 class Role(str, enum.Enum):
@@ -49,6 +52,13 @@ class User(Base):
     def reactivar_usuario(self):
         self.estado = UserStatus.ACTIVO
     
+    # Relación con los tokens de restablecimiento de contraseña
+    password_reset_tokens = relationship(
+        "PasswordResetToken", 
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
     # Representación en string
     def __repr__(self):
-        return f"<Usuario {self.nombre} ({self.email})>"
+        return f"<User {self.email}>"

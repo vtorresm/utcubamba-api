@@ -75,3 +75,6 @@ class Prediction(Base):
 
 # Importar el modelo User, Role y UserStatus
 from .user import User, Role, UserStatus
+
+# Importar el modelo PasswordResetToken
+from .password_reset_token import PasswordResetToken
