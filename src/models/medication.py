@@ -20,7 +20,7 @@ class TipoDeToma(Base):
     nombre = Column(String(100), unique=True, nullable=False)
 
 class Medicamento(Base):
-    __tablename__ = "medicamentos"
+    __tablename__ = "medications"
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), nullable=False)
     categoria_id = Column(Integer, ForeignKey("categorias.id"))
