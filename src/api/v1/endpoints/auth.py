@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.services.auth_service import AuthService
-from src.models.user import Role
-from datetime import timedelta
+from src.models.user import Role, User, UserStatus
+from datetime import timedelta, datetime
 import os
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field, validator
+from typing import Optional, Dict, Any
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
@@ -15,56 +16,251 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 router = APIRouter()
 
 # Modelos para las solicitudes
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="Email del usuario")
+    password: str = Field(..., min_length=6, max_length=100)
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+    exp: Optional[datetime] = None
+
 class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    role: str = Role.USER
+    """Modelo para la solicitud de registro de usuario."""
+    nombre: str = Field(..., min_length=2, max_length=100, description="Nombre completo del usuario")
+    email: EmailStr = Field(..., description="Email institucional del usuario")
+    password: str = Field(..., min_length=6, max_length=100, description="Contraseña con al menos 6 caracteres")
+    cargo: str = Field(..., min_length=2, max_length=100, description="Cargo o puesto del usuario")
+    departamento: str = Field(..., min_length=2, max_length=100, description="Departamento o área al que pertenece el usuario")
+    contacto: Optional[str] = Field(
+        None, 
+        min_length=8, 
+        max_length=50, 
+        description="Número de teléfono o extensión (opcional)",
+        example="+51987654321"
+    )
+    role: Role = Field(
+        default=Role.USER, 
+        description=f"Rol del usuario en el sistema. Valores permitidos: {', '.join([r.value for r in Role])}"
+    )
+    
+    @validator('role')
+    def validate_role(cls, v):
+        if v not in [r.value for r in Role]:
+            raise ValueError(f"Rol inválido. Debe ser uno de: {', '.join([r.value for r in Role])}")
+        return v
+    
+    @validator('email')
+    def validate_email_domain(cls, v):
+        # Validar que el correo sea institucional (puedes personalizar el dominio)
+        if not v.endswith(('@utcubamba.edu.pe', '@gmail.com')):  # Agrega los dominios permitidos
+            raise ValueError("El correo debe ser institucional")
+        return v.lower()
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "nombre": "Juan Pérez",
+                "email": "juan.perez@utcubamba.edu.pe",
+                "password": "miclave123",
+                "cargo": "Docente de Matemáticas",
+                "departamento": "Académico",
+                "contacto": "+51987654321",
+                "role": "user"
+            }
+        }
 
 class ResetPasswordRequest(BaseModel):
-    email: str
+    email: EmailStr
 
 class ResetPasswordConfirm(BaseModel):
     token: str
-    new_password: str
+    new_password: str = Field(..., min_length=6, max_length=100)
 
-@router.post("/login", tags=["auth"])
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@router.post(
+    "/login",
+    response_model=Token,
+    status_code=status.HTTP_200_OK,
+    tags=["auth"],
+    responses={
+        200: {"description": "Inicio de sesión exitoso"},
+        401: {"description": "Credenciales inválidas"},
+        422: {"description": "Error de validación"}
+    }
+)
+async def login(
+    request: LoginRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
     Inicia sesión y devuelve un token JWT.
+    
+    - **username**: Email del usuario
+    - **password**: Contraseña del usuario
     """
-    user = AuthService.verify_user(db, form_data.username, form_data.password)  # form_data.username es el email
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        user = AuthService.verify_user(db, request.username, request.password)
+        
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = AuthService.create_access_token(
+            data={"sub": user.email, "role": user.role}, 
+            expires_delta=access_token_expires
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = AuthService.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "email": user.email,
+                "role": user.role,
+                "status": user.estado.value if user.estado else None
+            }
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
+        )
 
-@router.post("/register", tags=["auth"])
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    tags=["auth"],
+    responses={
+        201: {"description": "Usuario registrado exitosamente"},
+        400: {"description": "Error en la solicitud"},
+        422: {"description": "Error de validación"},
+        500: {"description": "Error interno del servidor"}
+    }
+)
+async def register(
+    request: RegisterRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
-    Registra un nuevo usuario.
+    Registra un nuevo usuario en el sistema con toda su información personal y laboral.
+    
+    - **nombre**: Nombre completo del usuario (requerido, 2-100 caracteres)
+    - **email**: Email institucional (requerido, debe ser único)
+    - **password**: Contraseña (requerido, mínimo 6 caracteres)
+    - **cargo**: Cargo o puesto del usuario (requerido, 2-100 caracteres)
+    - **departamento**: Departamento o área (requerido, 2-100 caracteres)
+    - **contacto**: Número de teléfono o extensión (opcional, 8-50 caracteres)
+    - **role**: Rol del usuario en el sistema (opcional, por defecto 'user')
     """
-    user = AuthService.register_user(db, request.email, request.password, request.role)
-    return {"message": "User registered successfully", "email": user.email, "role": user.role}
+    try:
+        # Registrar el nuevo usuario con todos los campos requeridos
+        user = AuthService.register_user(
+            db=db,
+            email=request.email,
+            password=request.password,
+            nombre=request.nombre,
+            cargo=request.cargo,
+            departamento=request.departamento,
+            contacto=request.contacto,
+            role=request.role
+        )
+        
+        # Preparar respuesta exitosa
+        response_data = {
+            "message": "Usuario registrado exitosamente",
+            "data": {
+                "id": user.id,
+                "nombre": user.nombre,
+                "email": user.email,
+                "cargo": user.cargo,
+                "departamento": user.departamento,
+                "contacto": user.contacto,
+                "role": user.role,
+                "estado": user.estado.value,
+                "fecha_ingreso": user.fecha_ingreso.isoformat() if user.fecha_ingreso else None,
+                "fecha_creacion": user.created_at.isoformat() if user.created_at else None
+            }
+        }
+        
+        return response_data
+        
+    except HTTPException as e:
+        # Re-lanzar excepciones HTTP existentes
+        raise e
+        
+    except Exception as e:
+        # Manejar cualquier otro error inesperado
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "registration_failed",
+                "message": "Error inesperado al registrar el usuario"
+            }
+        )
 
 @router.post("/password-reset", tags=["auth"])
-def request_password_reset(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+async def request_password_reset(
+    request: ResetPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """
     Solicita un token para restablecer la contraseña.
+    
+    - **email**: Correo electrónico del usuario que desea restablecer la contraseña
     """
-    token = AuthService.generate_reset_token(db, request.email)
-    return {"message": "Password reset token generated", "token": token}
+    from src.services.email_service import EmailService
+    
+    # Buscar usuario por email
+    user = db.query(User).filter(User.email == request.email).first()
+    
+    # Si el usuario existe, generar token y enviar correo
+    if user:
+        token = await AuthService.generate_reset_token(db, request.email)
+        if token:
+            await EmailService.send_password_reset_email(
+                background_tasks=background_tasks,
+                to_email=request.email,
+                token=token,
+                username=user.nombre or "Usuario"
+            )
+    
+    # Por seguridad, siempre devolvemos el mismo mensaje
+    return {
+        "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
+    }
 
-@router.post("/password-reset/confirm", tags=["auth"])
-def reset_password(request: ResetPasswordConfirm, db: Session = Depends(get_db)):
+@router.post(
+    "/password-reset/confirm",
+    status_code=status.HTTP_200_OK,
+    tags=["auth"],
+    responses={
+        200: {"description": "Contraseña restablecida exitosamente"},
+        400: {"description": "Token inválido o expirado"},
+        422: {"description": "Error de validación"}
+    }
+)
+async def reset_password(
+    request: ResetPasswordConfirm,
+    db: Session = Depends(get_db)
+) -> Dict[str, str]:
     """
-    Restablece la contraseña usando un token.
+    Restablece la contraseña usando un token de restablecimiento.
+    
+    - **token**: Token de restablecimiento de contraseña
+    - **new_password**: Nueva contraseña (mínimo 6 caracteres)
     """
-    AuthService.reset_password(db, request.token, request.new_password)
-    return {"message": "Password reset successfully"}
+    try:
+        AuthService.reset_password(db, request.token, request.new_password)
+        return {
+            "message": "Contraseña restablecida exitosamente"
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "reset_failed", "message": "No se pudo restablecer la contraseña"}
+        )

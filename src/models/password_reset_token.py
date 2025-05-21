@@ -1,9 +1,17 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
-from src.core.database import Base
 from datetime import datetime, timedelta
+from typing import Optional
+from sqlmodel import SQLModel, Field, Relationship
+from .base import BaseModel
 
-class PasswordResetToken(Base):
+class PasswordResetTokenBase(SQLModel):
+    """Base model for PasswordResetToken with common attributes."""
+    token: str = Field(..., max_length=255, unique=True, nullable=False)
+    expires_at: datetime = Field(
+        default_factory=lambda: datetime.utcnow() + timedelta(hours=1),
+        nullable=False
+    )
+
+class PasswordResetToken(PasswordResetTokenBase, BaseModel, table=True):
     """
     Modelo para almacenar tokens de restablecimiento de contraseña.
     
@@ -16,21 +24,25 @@ class PasswordResetToken(Base):
     """
     __tablename__ = "password_reset_tokens"
     
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    token = Column(String(255), unique=True, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-    
     # Relación con el usuario
-    user = relationship("User", back_populates="password_reset_tokens")
-    
-    def __init__(self, **kwargs):
-        # Establecer la fecha de expiración por defecto a 1 hora desde la creación
-        if 'expires_at' not in kwargs:
-            kwargs['expires_at'] = datetime.utcnow() + timedelta(hours=1)
-        super().__init__(**kwargs)
+    user_id: int = Field(foreign_key="users.id", nullable=False)
+    user: "User" = Relationship(back_populates="password_reset_tokens")
     
     def is_expired(self) -> bool:
         """Verifica si el token ha expirado."""
         return datetime.utcnow() > self.expires_at
+
+class PasswordResetTokenCreate(SQLModel):
+    """Model for creating a new password reset token."""
+    email: str
+
+class PasswordResetTokenResponse(PasswordResetTokenBase):
+    """Response model for password reset token."""
+    id: int
+    user_id: int
+    created_at: datetime
+
+class PasswordResetRequest(SQLModel):
+    """Model for password reset request."""
+    token: str
+    new_password: str

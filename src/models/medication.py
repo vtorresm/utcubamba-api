@@ -1,43 +1,75 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
-from sqlalchemy.orm import relationship
-from src.core.database import Base
+from typing import List, Optional, TYPE_CHECKING, Set
+from datetime import datetime
+from sqlmodel import SQLModel, Field, Relationship
+from .base import BaseModel
 
-class Categoria(Base):
-    __tablename__ = "categorias"
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), unique=True, nullable=False)
-    medicamentos = relationship("Medicamento", back_populates="categoria")
+# Importaciones condicionales para evitar importaciones circulares
+if TYPE_CHECKING:
+    from .category import Category
+    from .condition import Condition
+    from .intake_type import IntakeType
+    from .movement import Movement
+    from .prediction import Prediction
+    from .medication_condition import MedicationConditionLink
 
-class Condicion(Base):
-    __tablename__ = "condiciones"
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), unique=True, nullable=False)
-    medicamentos = relationship("Medicamento", secondary="medicamento_condicion", back_populates="condiciones")
+class MedicationBase(SQLModel):
+    """Base model for Medication with common attributes."""
+    name: str = Field(..., max_length=100, nullable=False, index=True)
+    description: Optional[str] = Field(default=None, max_length=500)
+    stock: int = Field(default=0, ge=0, description="Current stock quantity")
+    min_stock: int = Field(default=10, ge=0, description="Minimum stock level before alert")
+    unit: str = Field(default="units", max_length=50, description="Measurement unit (e.g., 'mg', 'ml', 'units')")
+    
+    # Foreign keys
+    category_id: Optional[int] = Field(default=None, foreign_key="categories.id")
+    intake_type_id: Optional[int] = Field(default=None, foreign_key="intake_types.id")
 
-class TipoDeToma(Base):
-    __tablename__ = "tipos_de_toma"
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), unique=True, nullable=False)
-
-class Medicamento(Base):
+class Medication(MedicationBase, BaseModel, table=True):
+    """Medication model for database."""
     __tablename__ = "medications"
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
-    categoria_id = Column(Integer, ForeignKey("categorias.id"))
-    categoria = relationship("Categoria", back_populates="medicamentos")
-    condiciones = relationship("Condicion", secondary="medicamento_condicion")
-    tipo_toma_id = Column(Integer, ForeignKey("tipos_de_toma.id"))
+    
+    # Relationships
+    category: Optional["Category"] = Relationship(back_populates="medications")
+    intake_type: Optional["IntakeType"] = Relationship(back_populates="medications")
+    
+    # Relationship to the association table
+    condition_links: List["MedicationConditionLink"] = Relationship(back_populates="medication")
+    
+    # Relationship to conditions through the association table
+    @property
+    def conditions(self) -> List["Condition"]:
+        return [link.condition for link in self.condition_links]
+    
+    # One-to-many relationship with Movement
+    movements: List["Movement"] = Relationship(back_populates="medication")
+    
+    # One-to-many relationship with Prediction
+    predictions: List["Prediction"] = Relationship(back_populates="medication")
 
-class MedicamentoCondicion(Base):
-    __tablename__ = "medicamento_condicion"
-    medicamento_id = Column(Integer, ForeignKey("medicamentos.id"), primary_key=True)
-    condicion_id = Column(Integer, ForeignKey("condiciones.id"), primary_key=True)
+class MedicationCreate(MedicationBase):
+    """Model for creating a new medication."""
+    condition_ids: Optional[List[int]] = Field(
+        default_factory=list, 
+        description="List of condition IDs associated with this medication"
+    )
 
-class Movimiento(Base):
-    __tablename__ = "movimientos"
-    id = Column(Integer, primary_key=True, index=True)
-    medicamento_id = Column(Integer, ForeignKey("medicamentos.id"))
-    fecha = Column(DateTime, nullable=False)
-    tipo = Column(String(50), nullable=False)  # "entrada" o "salida"
-    cantidad = Column(Float, nullable=False)
-    predictions = relationship("Prediction", back_populates="movimiento")
+class MedicationUpdate(SQLModel):
+    """Model for updating an existing medication."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    stock: Optional[int] = None
+    min_stock: Optional[int] = None
+    unit: Optional[str] = None
+    category_id: Optional[int] = None
+    intake_type_id: Optional[int] = None
+    condition_ids: Optional[List[int]] = None
+
+class MedicationInDB(MedicationBase):
+    """Medication model for returning medication data."""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    condition_ids: List[int] = Field(default_factory=list)
+    
+    class Config:
+        from_attributes = True
