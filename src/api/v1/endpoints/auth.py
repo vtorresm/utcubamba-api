@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body, BackgroundTasks
+from pydantic import BaseModel, EmailStr, Field, validator
 from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.services.auth_service import AuthService
@@ -74,7 +75,14 @@ class RegisterRequest(BaseModel):
         }
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(..., description="Correo electrónico del usuario")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "usuario@utcubamba.edu.pe"
+            }
+        }
 
 class ResetPasswordConfirm(BaseModel):
     token: str
@@ -213,24 +221,31 @@ async def request_password_reset(
     """
     from src.services.email_service import EmailService
     
-    # Buscar usuario por email
-    user = db.query(User).filter(User.email == request.email).first()
-    
-    # Si el usuario existe, generar token y enviar correo
-    if user:
-        token = await AuthService.generate_reset_token(db, request.email)
-        if token:
-            await EmailService.send_password_reset_email(
-                background_tasks=background_tasks,
-                to_email=request.email,
-                token=token,
-                username=user.nombre or "Usuario"
-            )
-    
-    # Por seguridad, siempre devolvemos el mismo mensaje
-    return {
-        "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
-    }
+    try:
+        # Buscar usuario por email
+        user = db.query(User).filter(User.email == request.email).first()
+        
+        # Si el usuario existe, generar token y enviar correo
+        if user:
+            token = AuthService.generate_reset_token(db, request.email)
+            if token:
+                await EmailService.send_password_reset_email(
+                    background_tasks=background_tasks,
+                    to_email=request.email,
+                    token=token,
+                    username=user.nombre or "Usuario"
+                )
+        
+        # Por seguridad, siempre devolvemos el mismo mensaje
+        return {
+            "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
+        }
+    except Exception as e:
+        import logging
+        logging.error(f"Error en password-reset: {str(e)}", exc_info=True)
+        return {
+            "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
+        }
 
 @router.post(
     "/password-reset/confirm",

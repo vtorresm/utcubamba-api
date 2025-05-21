@@ -176,9 +176,9 @@ class AuthService:
             )
 
     @staticmethod
-    async def generate_reset_token(db: Session, email: str) -> Optional[str]:
+    def generate_reset_token(db: Session, email: str) -> Optional[str]:
         """
-        Genera un token para restablecer la contraseña de forma asíncrona.
+        Genera un token para restablecer la contraseña.
         
         Args:
             db: Sesión de base de datos
@@ -187,14 +187,9 @@ class AuthService:
         Returns:
             str: Token generado o None si hay un error
         """
-        from sqlalchemy.future import select
-        from sqlalchemy import or_
-        
         try:
             # Buscar usuario por email
-            stmt = select(User).where(User.email == email)
-            result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
+            user = db.query(User).filter(User.email == email).first()
             
             if not user:
                 return None
@@ -210,19 +205,18 @@ class AuthService:
             )
             
             # Eliminar tokens anteriores del usuario
-            await db.execute(
-                PasswordResetToken.__table__.delete()
-                .where(PasswordResetToken.user_id == user.id)
-            )
+            db.query(PasswordResetToken).filter(
+                PasswordResetToken.user_id == user.id
+            ).delete()
             
             # Guardar nuevo token
             db.add(reset_token)
-            await db.commit()
+            db.commit()
             
             return token
             
         except Exception as e:
-            await db.rollback()
+            db.rollback()
             import logging
             logging.error(f"Error al generar token de restablecimiento: {str(e)}", exc_info=True)
             return None

@@ -19,8 +19,7 @@ class UserBase(SQLModel):
         max_length=50, 
         index=True, 
         unique=True,
-        nullable=True,
-        sa_type_kwargs={"unique": True, "nullable": True}
+        nullable=True
     )  # Número de teléfono o extensión (único por usuario)
     fecha_ingreso: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     estado: UserStatus = Field(default=UserStatus.ACTIVO, nullable=False)

@@ -8,6 +8,7 @@ Esta documentación describe los endpoints disponibles para la gestión de medic
 - [Crear Medicamento](#crear-medicamento)
 - [Actualizar Medicamento](#actualizar-medicamento)
 - [Eliminar Medicamento](#eliminar-medicamento)
+- [Modelo de Datos](#modelo-de-datos)
 
 ---
 
@@ -35,37 +36,63 @@ Authorization: Bearer <token_jwt>
 
 ### Respuesta Exitosa (200 OK)
 ```json
-[
-  {
-    "id": 1,
-    "name": "Paracetamol 500mg",
-    "description": "Analgésico y antipirético",
-    "stock": 150,
-    "category_id": 1,
-    "intake_type_id": 1,
-    "expiration_date": "2025-12-31",
-    "price": 0.50,
-    "created_at": "2025-01-15T10:00:00",
-    "updated_at": "2025-05-20T15:30:00"
-  },
-  {
-    "id": 2,
-    "name": "Ibuprofeno 400mg",
-    "description": "Antiinflamatorio no esteroideo",
-    "stock": 85,
-    "category_id": 1,
-    "intake_type_id": 2,
-    "expiration_date": "2026-06-30",
-    "price": 0.75,
-    "created_at": "2025-01-16T09:15:00",
-    "updated_at": "2025-05-19T11:20:00"
-  }
-]
+{
+  "status": "success",
+  "total": 2,
+  "skip": 0,
+  "limit": 10,
+  "count": 2,
+  "data": [
+    {
+      "id": 1,
+      "name": "Paracetamol 500mg",
+      "description": "Analgésico y antipirético",
+      "stock": 150,
+      "min_stock": 10,
+      "unit": "units",
+      "category_id": 1,
+      "intake_type_id": 1,
+      "created_at": "2025-01-15T10:00:00",
+      "updated_at": "2025-05-20T15:30:00"
+    },
+    {
+      "id": 2,
+      "name": "Ibuprofeno 400mg",
+      "description": "Antiinflamatorio no esteroideo",
+      "stock": 85,
+      "min_stock": 10,
+      "unit": "units",
+      "category_id": 1,
+      "intake_type_id": 2,
+      "created_at": "2025-01-16T09:15:00",
+      "updated_at": "2025-05-19T11:20:00"
+    }
+  ]
+}
 ```
 
 ### Posibles Errores
+- **400 Bad Request**: Parámetros de consulta inválidos
 - **401 Unauthorized**: Token no proporcionado o inválido
+- **404 Not Found**: No se encontró el recurso solicitado
+- **422 Unprocessable Entity**: Error de validación en los datos de entrada
 - **500 Internal Server Error**: Error interno del servidor
+
+## Modelo de Datos
+
+### Medicamento
+| Campo          | Tipo    | Requerido | Descripción                                      |
+|----------------|---------|-----------|--------------------------------------------------|
+| id             | int     | Sí        | Identificador único del medicamento              |
+| name           | string  | Sí        | Nombre del medicamento                          |
+| description    | string  | No        | Descripción detallada                           |
+| stock          | int     | Sí        | Cantidad actual en inventario                   |
+| min_stock      | int     | Sí        | Nivel mínimo de inventario antes de alertar     |
+| unit           | string  | Sí        | Unidad de medida (ej. mg, ml, unidades)         |
+| category_id    | int     | No        | ID de la categoría a la que pertenece           |
+| intake_type_id | int     | No        | ID del tipo de ingesta                          |
+| created_at     | string  | No        | Fecha de creación (formato ISO 8601)            |
+| updated_at     | string  | No        | Fecha de última actualización (formato ISO 8601)|
 
 ---
 
@@ -91,14 +118,19 @@ Authorization: Bearer <token_jwt>
 ### Respuesta Exitosa (200 OK)
 ```json
 {
-  "id": 1,
-  "name": "Paracetamol 500mg",
-  "description": "Analgésico y antipirético",
-  "stock": 150,
-  "category_id": 1,
-  "intake_type_id": 1,
-  "expiration_date": "2025-12-31",
-  "price": 0.50,
+  "status": "success",
+  "data": {
+    "id": 1,
+    "name": "Paracetamol 500mg",
+    "description": "Analgésico y antipirético",
+    "stock": 150,
+    "min_stock": 10,
+    "unit": "units",
+    "category_id": 1,
+    "intake_type_id": 1,
+    "created_at": "2025-01-15T10:00:00",
+    "updated_at": "2025-05-20T15:30:00"
+  }
   "created_at": "2025-01-15T10:00:00",
   "updated_at": "2025-05-20T15:30:00"
 }

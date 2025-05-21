@@ -11,17 +11,17 @@ Esta documentación describe los endpoints disponibles para realizar prediccione
 
 ## Predecir Desabastecimiento
 
-Realiza una predicción de desabastecimiento para un medicamento específico.
+Obtiene una predicción de desabastecimiento para un medicamento específico.
 
 ### URL
 ```
-GET /api/v1/predictions/predict/{medication_id}
+GET /api/v1/predictions/predict/
 ```
 
-### Parámetros de Ruta
-| Parámetro    | Tipo | Requerido | Descripción                |
-|--------------|------|-----------|----------------------------|
-| medication_id| int  | Sí        | ID del medicamento a predecir |
+### Parámetros de Consulta
+| Parámetro    | Tipo | Requerido | Descripción                                |
+|--------------|------|-----------|--------------------------------------------|
+| medicamento_id | int  | Sí        | ID del medicamento a predecir (mayor a 0)  |
 
 ### Encabezados
 ```
@@ -38,7 +38,7 @@ Authorization: Bearer <token_jwt>
 }
 ```
 
-### Campos de la Respuesta
+### Campos de Respuesta
 | Campo        | Tipo   | Descripción                                      |
 |--------------|--------|--------------------------------------------------|
 | medication_id| int    | ID del medicamento consultado                    |
@@ -47,8 +47,9 @@ Authorization: Bearer <token_jwt>
 | timestamp    | string | Fecha y hora de la predicción                    |
 
 ### Posibles Errores
-- **400 Bad Request**: ID de medicamento inválido
+- **400 Bad Request**: ID de medicamento inválido o no proporcionado
 - **401 Unauthorized**: Token no proporcionado o inválido
+- **403 Forbidden**: Usuario no tiene permisos suficientes
 - **404 Not Found**: Medicamento no encontrado
 - **500 Internal Server Error**: Error al procesar la predicción
 
@@ -60,13 +61,13 @@ Evalúa el rendimiento del modelo de predicción (solo administradores).
 
 ### URL
 ```
-GET /api/v1/predictions/evaluate/{medication_id}
+GET /api/v1/predictions/evaluate/
 ```
 
-### Parámetros de Ruta
-| Parámetro    | Tipo | Requerido | Descripción                |
-|--------------|------|-----------|----------------------------|
-| medication_id| int  | Sí        | ID del medicamento a evaluar |
+### Parámetros de Consulta
+| Parámetro    | Tipo | Requerido | Descripción                                |
+|--------------|------|-----------|--------------------------------------------|
+| medicamento_id | int  | Sí        | ID del medicamento a evaluar (mayor a 0)   |
 
 ### Encabezados
 ```
@@ -124,8 +125,8 @@ GET /api/v1/predictions/metrics
 ### Parámetros de Consulta
 | Parámetro | Tipo   | Requerido | Descripción                                      |
 |-----------|--------|-----------|--------------------------------------------------|
-| days      | int    | No        | Número de días hacia atrás para obtener métricas |
-| limit     | int    | No        | Número máximo de registros a devolver           |
+| days      | int    | No        | Número de días hacia atrás para obtener métricas (1-365, default: 30) |
+| limit     | int    | No        | Número máximo de registros a devolver (1-1000, default: 100) |
 
 ### Encabezados
 ```
@@ -136,7 +137,7 @@ Authorization: Bearer <token_jwt>
 ```json
 {
   "model_type": "RandomForest",
-  "last_updated": "2025-05-20T11:15:30.456789",
+  "last_updated": "2025-05-21T22:05:26.123456",
   "metrics_history": [
     {
       "date": "2025-05-20",
@@ -157,6 +158,25 @@ Authorization: Bearer <token_jwt>
   ]
 }
 ```
+
+### Campos de Respuesta
+| Campo           | Tipo  | Descripción                                      |
+|-----------------|-------|--------------------------------------------------|
+| model_type      | string| Tipo de modelo utilizado (ej: "RandomForest")    |
+| last_updated    | string| Fecha y hora de la última actualización          |
+| metrics_history | array | Historial de métricas ordenado por fecha (más reciente primero) |
+
+### Métricas Disponibles
+- **accuracy**: Exactitud del modelo (0 a 1)
+- **precision**: Precisión del modelo (0 a 1)
+- **recall**: Sensibilidad del modelo (0 a 1)
+- **f1_score**: Puntuación F1 (media armónica de precisión y recall)
+- **roc_auc**: Área bajo la curva ROC (0.5 a 1.0)
+
+### Posibles Errores
+- **401 Unauthorized**: Token no proporcionado o inválido
+- **403 Forbidden**: El usuario no tiene permisos de administrador
+- **500 Internal Server Error**: Error al obtener las métricas
 
 ### Posibles Errores
 - **401 Unauthorized**: Token no proporcionado o inválido
@@ -195,18 +215,32 @@ Authorization: Bearer <token_jwt>
 
 ### Realizar una predicción
 ```bash
-curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/predict/1" \
-  -H "Authorization: Bearer <token_jwt>"
+curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/predict/?medicamento_id=1" \
+  -H "Authorization: Bearer <token_jwt>" \
+  -H "accept: application/json"
 ```
 
-### Evaluar el modelo (admin)
+### Evaluar el modelo (solo admin)
 ```bash
-curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/evaluate/1" \
+curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/evaluate/?medicamento_id=1" \
+  -H "Authorization: Bearer <token_jwt_admin>" \
+  -H "accept: application/json"
+```
+
+### Obtener métricas del modelo (solo admin)
+```bash
+# Obtener métricas de los últimos 30 días (valor por defecto)
+curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/metrics" \
+  -H "Authorization: Bearer <token_jwt_admin>"
+
+# Obtener métricas de los últimos 7 días (máx. 50 registros)
+curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/metrics?days=7&limit=50" \
   -H "Authorization: Bearer <token_jwt_admin>"
 ```
 
-### Obtener métricas del modelo (admin)
-```bash
-curl -X GET "https://api.utcubamba.edu.pe/v1/predictions/metrics?days=7" \
-  -H "Authorization: Bearer <token_jwt_admin>"
+### Ejemplo de respuesta de error (403 Forbidden)
+```json
+{
+  "detail": "No tiene permisos suficientes para realizar esta acción"
+}
 ```
