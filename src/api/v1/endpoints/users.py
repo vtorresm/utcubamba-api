@@ -18,9 +18,14 @@ class UserBase(BaseModel):
     departamento: Optional[str] = None
     contacto: Optional[str] = None
     role: Optional[str] = None
+    fecha_ingreso: Optional[datetime] = None
+    estado: Optional[str] = None
     
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
         
     def model_dump(self, **kwargs):
         # Filtrar valores None para actualizaciones parciales
@@ -31,20 +36,24 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: int
+    fecha_ingreso: Optional[datetime] = None
+    estado: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
 
 # Get all users endpoint (admin only)
 @router.get("/", response_model=List[UserResponse])
-def get_users(
+async def get_users(
     skip: int = 0, 
     limit: int = 100, 
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
     """
-    Retrieve all users.
+    Retrieve all users with their complete information.
     Only accessible to admin users.
     """
     if current_user.role != Role.ADMIN:
@@ -53,26 +62,33 @@ def get_users(
             detail="Not enough permissions"
         )
     
+    # Obtener todos los usuarios con sus campos completos
     users = db.query(User).offset(skip).limit(limit).all()
+    
+    # Asegurarse de que los objetos de usuario se conviertan correctamente al modelo de respuesta
     return users
 
 # Get current user endpoint
 @router.get("/me", response_model=UserResponse)
-def get_user_me(current_user: User = Depends(get_current_user)):
+async def get_user_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Get current user information.
     """
-    return current_user
+    # Recargar el usuario para asegurarnos de tener todos los campos actualizados
+    db_user = db.query(User).filter(User.id == current_user.id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
 
 # Get specific user by ID (admin only)
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user(
+async def get_user(
     user_id: int, 
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
     """
-    Get a specific user by ID.
+    Get a specific user by ID with complete information.
     Only accessible to admin users.
     """
     if current_user.role != Role.ADMIN:
@@ -84,6 +100,8 @@ def get_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Asegurarse de que el objeto de usuario se convierta correctamente al modelo de respuesta
     return user
 
 # Update user endpoint
