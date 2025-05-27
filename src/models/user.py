@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 from passlib.context import CryptContext
@@ -21,7 +21,7 @@ class UserBase(SQLModel):
         unique=True,
         nullable=True
     )  # Número de teléfono o extensión (único por usuario)
-    fecha_ingreso: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    fecha_ingreso: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
     estado: UserStatus = Field(default=UserStatus.ACTIVO, nullable=False)
     role: Role = Field(default=Role.USER, nullable=False)
 
