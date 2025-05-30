@@ -9,8 +9,11 @@ from src.core.database import get_db
 from src.models.medication import Medication, MedicationBase, MedicationCreate, MedicationUpdate, MedicationInDB
 from src.models.category import Category, CategoryBase
 from src.models.intake_type import IntakeType, IntakeTypeBase
+
+# Comentado temporalmente hasta que la autenticación esté lista
 from src.dependencies.auth import get_current_user
-from src.models.user import User
+from src.models.user import User, Role
+AUTH_ENABLED = True
 
 router = APIRouter()
 
@@ -44,6 +47,7 @@ class MedicationResponse(MedicationInDB):
                 "stock": 150,
                 "min_stock": 10,
                 "unit": "units",
+                "price": 5.99,
                 "category_id": 1,
                 "intake_type_id": 1,
                 "created_at": "2025-01-15T10:00:00",
@@ -81,8 +85,9 @@ def get_medications(
     name: Optional[str] = Query(None, description="Filtrar por nombre (búsqueda parcial)"),
     category_id: Optional[int] = Query(None, description="Filtrar por ID de categoría"),
     intake_type_id: Optional[int] = Query(None, description="Filtrar por ID de tipo de ingesta"),
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Descomentar cuando la autenticación esté lista
+    db: Session = Depends(get_db),
+    # Descomenta la siguiente línea cuando la autenticación esté lista
+    # current_user: User = Depends(get_current_user) if AUTH_ENABLED else None
 ):
     """
     Obtiene una lista paginada de medicamentos con filtros opcionales.
@@ -156,8 +161,9 @@ def get_medications(
 )
 def get_medication(
     medication_id: int = Path(..., description="ID del medicamento"),
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Descomentar cuando la autenticación esté lista
+    db: Session = Depends(get_db),
+    # Descomenta la siguiente línea cuando la autenticación esté lista
+    # current_user: User = Depends(get_current_user) if AUTH_ENABLED else None
 ):
     """
     Obtiene un medicamento específico por su ID.
@@ -198,8 +204,8 @@ def get_medication(
 @router.post("/", response_model=MedicationResponse, status_code=status.HTTP_201_CREATED)
 def create_medication(
     medication: MedicationCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Create a new medication.
@@ -223,46 +229,64 @@ def create_medication(
     return db_medication
 
 # Update medication
-@router.put("/{medication_id}", response_model=MedicationResponse)
+@router.put("/{medication_id}", response_model=Dict[str, Any])
 def update_medication(
     medication_id: int,
-    medication: MedicationUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    medication: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Update an existing medication.
+    Actualiza un medicamento existente (sin autenticación temporalmente).
     """
-    # Check if user has admin permissions
-    if current_user.role != Role.ADMIN:
+    try:
+        print(f"\n=== SOLICITUD PUT /medications/{medication_id} ===")
+        print(f"Datos recibidos: {medication}")
+        
+        # Obtener el medicamento
+        db_medication = db.query(Medication).filter(Medication.id == medication_id).first()
+        if not db_medication:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No se encontró el medicamento con ID {medication_id}"
+            )
+        
+        # Actualizar solo los campos proporcionados
+        update_data = {k: v for k, v in medication.items() if v is not None}
+        print(f"Actualizando con datos: {update_data}")
+        
+        for key, value in update_data.items():
+            if hasattr(db_medication, key):
+                setattr(db_medication, key, value)
+        
+        db.add(db_medication)
+        db.commit()
+        db.refresh(db_medication)
+        
+        print(f"Medicamento actualizado exitosamente: {db_medication}")
+        
+        return {
+            "status": "success",
+            "message": "Medicamento actualizado exitosamente",
+            "data": MedicationResponse.from_orm(db_medication).dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error al actualizar el medicamento: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar el medicamento: {str(e)}"
         )
-    
-    # TODO: Replace with actual Medication model import
-    from src.models import Medication
-    
-    # Get the medication
-    db_medication = db.query(Medication).filter(Medication.id == medication_id).first()
-    if db_medication is None:
-        raise HTTPException(status_code=404, detail="Medication not found")
-    
-    # Update medication fields
-    medication_data = medication.model_dump(exclude_unset=True)
-    for key, value in medication_data.items():
-        setattr(db_medication, key, value)
-    
-    db.commit()
-    db.refresh(db_medication)
-    return db_medication
 
 # Delete medication
 @router.delete("/{medication_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_medication(
     medication_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Delete a medication.

@@ -19,6 +19,21 @@ class MedicationBase(SQLModel):
     stock: int = Field(default=0, ge=0, description="Current stock quantity")
     min_stock: int = Field(default=10, ge=0, description="Minimum stock level before alert")
     unit: str = Field(default="units", max_length=50, description="Measurement unit (e.g., 'mg', 'ml', 'units')")
+    manufacturer: Optional[str] = Field(default=None, max_length=200, description="Fabricante del medicamento")
+    expiration_date: Optional[datetime] = Field(
+        default=None, 
+        description="Fecha de vencimiento del lote actual"
+    )
+    status: str = Field(
+        default="Activo",
+        max_length=50,
+        description="Estado del medicamento (Activo, Inactivo, Vencido, Retirado)"
+    )
+    price: float = Field(
+        default=0.0,
+        ge=0,
+        description="Precio unitario del medicamento"
+    )
     
     # Foreign keys
     category_id: Optional[int] = Field(default=None, foreign_key="categories.id")
@@ -52,6 +67,14 @@ class MedicationCreate(MedicationBase):
         default_factory=list, 
         description="List of condition IDs associated with this medication"
     )
+    manufacturer: Optional[str] = None
+    expiration_date: Optional[datetime] = None
+    status: Optional[str] = "Activo"
+    price: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Precio unitario del medicamento"
+    )
 
 class MedicationUpdate(SQLModel):
     """Model for updating an existing medication."""
@@ -60,6 +83,14 @@ class MedicationUpdate(SQLModel):
     stock: Optional[int] = None
     min_stock: Optional[int] = None
     unit: Optional[str] = None
+    manufacturer: Optional[str] = None
+    expiration_date: Optional[datetime] = None
+    status: Optional[str] = None
+    price: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Precio unitario del medicamento"
+    )
     category_id: Optional[int] = None
     intake_type_id: Optional[int] = None
     condition_ids: Optional[List[int]] = None
