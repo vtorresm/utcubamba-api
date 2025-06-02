@@ -7,6 +7,13 @@ from src.core.logging import setup_logging
 # Configurar logging
 setup_logging()
 
+# Configuración de CORS
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Crear la aplicación FastAPI
 app = FastAPI(
     title="Utcubamba API",
     version="1.0.0",
@@ -16,11 +23,11 @@ app = FastAPI(
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Especifica el origen exacto
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["content-disposition"],  # Necesario para algunas respuestas
+    expose_headers=["*"],
 )
 
 # Evento de inicio para crear tablas
