@@ -110,15 +110,30 @@ async def login(
     - **password**: Contraseña del usuario
     """
     try:
-        user = AuthService.verify_user(db, request.username, request.password)
+        print(f"[AUTH] Intento de inicio de sesión para el usuario: {request.username}")
         
+        # Verificar el usuario
+        user = AuthService.verify_user(db, request.username, request.password)
+        if not user:
+            print("[AUTH] Error: Usuario no encontrado o contraseña incorrecta")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "invalid_credentials", "message": "Credenciales incorrectas"}
+            )
+        
+        print(f"[AUTH] Usuario autenticado: {user.email}, Rol: {user.role}")
+        
+        # Crear token de acceso
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = AuthService.create_access_token(
             data={"sub": user.email, "role": user.role}, 
             expires_delta=access_token_expires
         )
         
-        return {
+        print("[AUTH] Token generado exitosamente")
+        
+        # Preparar respuesta
+        response_data = {
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
@@ -127,6 +142,9 @@ async def login(
                 "status": user.estado.value if user.estado else None
             }
         }
+        
+        print(f"[AUTH] Enviando respuesta de autenticación exitosa")
+        return response_data
     except HTTPException as e:
         raise e
     except Exception as e:

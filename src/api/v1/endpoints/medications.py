@@ -1,59 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
-from sqlalchemy.orm import Session
-from sqlalchemy import text, select, and_
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select, and_
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
-from datetime import date, datetime
+from datetime import datetime
 
 from src.core.database import get_db
-from src.models.medication import Medication, MedicationBase, MedicationCreate, MedicationUpdate, MedicationInDB
-from src.models.category import Category, CategoryBase
-from src.models.intake_type import IntakeType, IntakeTypeBase
+from src.models.medication import Medication, MedicationCreate
+from src.models.category import Category
+from src.models.intake_type import IntakeType
+from src.schemas.medication import MedicationResponse, MedicationCreate, MedicationUpdate
 
 # Comentado temporalmente hasta que la autenticación esté lista
 from src.dependencies.auth import get_current_user
 from src.models.user import User, Role
-AUTH_ENABLED = True
+
+# Deshabilitar temporalmente la autenticación
+AUTH_ENABLED = False
 
 router = APIRouter()
-
-# Pydantic models for response
-class MedicationResponse(MedicationInDB):
-    """
-    Modelo de respuesta para medicamentos.
-    
-    Atributos:
-    - id: Identificador único del medicamento
-    - name: Nombre del medicamento
-    - description: Descripción detallada (opcional)
-    - stock: Cantidad actual en inventario
-    - min_stock: Nivel mínimo de inventario antes de alertar
-    - unit: Unidad de medida (ej. mg, ml, unidades)
-    - category_id: ID de la categoría a la que pertenece
-    - intake_type_id: ID del tipo de ingesta
-    - created_at: Fecha de creación
-    - updated_at: Fecha de última actualización
-    """
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
-            "example": {
-                "id": 1,
-                "name": "Paracetamol 500mg",
-                "description": "Analgésico y antipirético",
-                "stock": 150,
-                "min_stock": 10,
-                "unit": "units",
-                "price": 5.99,
-                "category_id": 1,
-                "intake_type_id": 1,
-                "created_at": "2025-01-15T10:00:00",
-                "updated_at": "2025-05-20T15:30:00"
-            }
-        }
 
 # Test endpoint
 @router.get(
@@ -105,8 +69,11 @@ def get_medications(
         print(f"\n=== SOLICITUD GET /medications/ ===")
         print(f"Parámetros: skip={skip}, limit={limit}, name={name}, category_id={category_id}")
         
-        # Construir la consulta base
-        query = db.query(Medication)
+        # Construir la consulta base con joinedload para cargar las relaciones
+        query = db.query(Medication).options(
+            joinedload(Medication.category),
+            joinedload(Medication.intake_type)
+        )
         
         # Aplicar filtros si se proporcionan
         if name:
@@ -128,10 +95,67 @@ def get_medications(
         medications = query.offset(skip).limit(limit).all()
         
         # Convertir los resultados a diccionario usando el modelo de respuesta
-        meds_list = [
-            MedicationResponse.from_orm(med).dict()
-            for med in medications
-        ]
+        meds_list = []
+        for med in medications:
+            try:
+                # Crear un diccionario con los atributos del modelo
+                med_dict = {
+                    'id': med.id,
+                    'name': med.name,
+                    'description': med.description,
+                    'stock': med.stock,
+                    'min_stock': med.min_stock,
+                    'unit': med.unit,
+                    'manufacturer': med.manufacturer,
+                    'expiration_date': med.expiration_date.isoformat() if med.expiration_date else None,
+                    'status': med.status,
+                    'price': float(med.price) if med.price is not None else 0.0,
+                    'category_id': med.category_id,
+                    'intake_type_id': med.intake_type_id,
+                    'created_at': med.created_at.isoformat() if hasattr(med, 'created_at') and med.created_at else None,
+                    'updated_at': med.updated_at.isoformat() if hasattr(med, 'updated_at') and med.updated_at else None,
+                    'barcode': getattr(med, 'barcode', None),
+                    'location': getattr(med, 'location', None),
+                    'notes': getattr(med, 'notes', None)
+                }
+                
+                # Añadir la categoría si existe
+                if med.category:
+                    med_dict['category'] = {
+                        'id': med.category.id,
+                        'name': med.category.name,
+                        'description': med.category.description
+                    }
+                
+                # Añadir el tipo de ingesta si existe
+                if med.intake_type:
+                    med_dict['intake_type'] = {
+                        'id': med.intake_type.id,
+                        'name': med.intake_type.name,
+                        'description': med.intake_type.description if hasattr(med.intake_type, 'description') else None
+                    }
+                else:
+                    med_dict['intake_type'] = None
+                
+                # Asegurarse de que todos los campos requeridos estén presentes
+                if 'category' not in med_dict:
+                    med_dict['category'] = None
+                if 'intake_type' not in med_dict:
+                    med_dict['intake_type'] = None
+                
+                # Convertir a la respuesta usando el modelo
+                response_med = MedicationResponse.from_orm(med)
+                med_dict.update(response_med.dict())
+                meds_list.append(med_dict)
+            except Exception as e:
+                print(f"Error procesando medicamento {med.id if hasattr(med, 'id') else 'unknown'}: {str(e)}")
+                # Añadir un registro de error a la lista para que la respuesta sea consistente
+                meds_list.append({
+                    'id': med.id if hasattr(med, 'id') else 0,
+                    'name': f'Error: {str(e)[:100]}',
+                    'error': True
+                })
+                continue
         
         return {
             "status": "success",
@@ -139,12 +163,17 @@ def get_medications(
             "skip": skip,
             "limit": limit,
             "count": len(meds_list),
-            "data": meds_list
+            "items": meds_list
         }
         
     except Exception as e:
-        print(f"Error en endpoint simplificado: {str(e)}")
-        return [{"error": str(e)}]
+        print(f"Error en endpoint de medicamentos: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener los medicamentos: {str(e)}"
+        )
 
 # Get specific medication by ID
 @router.get(
@@ -210,23 +239,66 @@ def create_medication(
     """
     Create a new medication.
     """
-    # Check if user has admin permissions
-    if current_user.role != Role.ADMIN:
+    # Check if authentication is enabled and user has admin permissions
+    if AUTH_ENABLED and (not current_user or current_user.role != Role.ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
         )
     
-    # TODO: Replace with actual Medication model import
-    # For now, using a mock implementation for testing
-    from src.models import Medication
-    
-    # Create new medication
-    db_medication = Medication(**medication.model_dump())
-    db.add(db_medication)
-    db.commit()
-    db.refresh(db_medication)
-    return db_medication
+    try:
+        # Verificar si la categoría existe si se proporciona
+        if medication.category_id is not None:
+            category = db.get(Category, medication.category_id)
+            if not category:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Category with id {medication.category_id} not found"
+                )
+        
+        # Verificar si el tipo de ingesta existe si se proporciona
+        if medication.intake_type_id is not None:
+            intake_type = db.get(IntakeType, medication.intake_type_id)
+            if not intake_type:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Intake type with id {medication.intake_type_id} not found"
+                )
+        
+        # Crear el medicamento
+        medication_data = medication.model_dump(exclude={"condition_ids"})
+        db_medication = Medication(**medication_data)
+        
+        # Agregar condiciones si se proporcionan
+        if hasattr(medication, 'condition_ids') and medication.condition_ids:
+            from src.models.condition import Condition
+            from src.models.medication_condition import MedicationConditionLink
+            
+            for condition_id in medication.condition_ids:
+                condition = db.get(Condition, condition_id)
+                if not condition:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Condition with id {condition_id} not found"
+                    )
+                # Crear la relación many-to-many
+                db_medication.condition_links.append(
+                    MedicationConditionLink(condition=condition)
+                )
+        
+        db.add(db_medication)
+        db.commit()
+        db.refresh(db_medication)
+        
+        return db_medication
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error al crear el medicamento: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear el medicamento: {str(e)}"
+        )
 
 # Update medication
 @router.put("/{medication_id}", response_model=Dict[str, Any])
