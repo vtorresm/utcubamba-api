@@ -1,15 +1,139 @@
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score, train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.model_selection import cross_val_score, train_test_split, TimeSeriesSplit
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc, mean_squared_error
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Literal
 from sqlalchemy.orm import Session
-from src.models.prediction import Prediction
+from src.models.prediction import Prediction, TrendDirection, AlertLevel
 from src.models import Medication, Condition
-from datetime import datetime
+from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+import pandas as pd
+from scipy import stats
+import json
 
 class PredictionService:
+    MODEL_VERSION = "1.1.0"
+    
+    @staticmethod
+    def _calculate_seasonality(usages: List[float], period: int = 12) -> float:
+        """
+        Calcula el coeficiente de estacionalidad de una serie temporal.
+        
+        Args:
+            usages: Lista de valores de uso históricos
+            period: Período de estacionalidad (por defecto 12 meses)
+            
+        Returns:
+            float: Coeficiente de estacionalidad (0-1)
+        """
+        if len(usages) < 2 * period:
+            return 0.0
+            
+        try:
+            # Usar seasonal_decompose para obtener el componente estacional
+            result = seasonal_decompose(usages, period=period, extrapolate_trend='freq')
+            seasonal = result.seasonal[-period:]  # Último período completo
+            
+            # Calcular la fuerza de la estacionalidad (0-1)
+            if np.var(usages) > 0:
+                return float(np.var(seasonal) / np.var(usages))
+            return 0.0
+        except:
+            return 0.0
+    
+    @staticmethod
+    def _determine_trend(usages: List[float], threshold: float = 0.1) -> TrendDirection:
+        """
+        Determina la dirección de la tendencia basada en regresión lineal.
+        
+        Args:
+            usages: Lista de valores de uso históricos
+            threshold: Umbral para considerar la pendiente como significativa
+            
+        Returns:
+            TrendDirection: Dirección de la tendencia (UP, DOWN o STABLE)
+        """
+        if len(usages) < 3:
+            return TrendDirection.STABLE
+            
+        x = np.arange(len(usages)).reshape(-1, 1)
+        y = np.array(usages)
+        
+        # Ajustar regresión lineal
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x.ravel(), y)
+        
+        # Determinar dirección basada en la pendiente
+        if abs(slope) < threshold:
+            return TrendDirection.STABLE
+        return TrendDirection.UP if slope > 0 else TrendDirection.DOWN
+    
+    @staticmethod
+    def _determine_alert_level(probability: float, stock_days: float) -> AlertLevel:
+        """
+        Determina el nivel de alerta basado en la probabilidad y días de stock.
+        
+        Args:
+            probability: Probabilidad de desabastecimiento (0-1)
+            stock_days: Días de stock disponibles
+            
+        Returns:
+            AlertLevel: Nivel de alerta (LOW, MEDIUM, HIGH)
+        """
+        if stock_days < 7 or probability > 0.7:
+            return AlertLevel.HIGH
+        elif stock_days < 14 or probability > 0.4:
+            return AlertLevel.MEDIUM
+        return AlertLevel.LOW
+    
+    @staticmethod
+    def _generate_alert_message(
+        prediction: bool, 
+        probability: float, 
+        stock: float,
+        trend: TrendDirection
+    ) -> str:
+        """Genera un mensaje de alerta descriptivo."""
+        if prediction:
+            if stock <= 0:
+                return f"¡Desabastecimiento inminente! Stock agotado."
+            return (
+                f"Riesgo alto de desabastecimiento en {stock:.0f} días. "
+                f"Tendencia: {trend.value.upper()}. "
+                f"Probabilidad: {probability*100:.1f}%"
+            )
+        return "Sin riesgo de desabastecimiento en el corto plazo"
+    
+    @staticmethod
+    def _calculate_confidence_intervals(
+        model: RandomForestRegressor, 
+        X: np.ndarray, 
+        confidence: float = 0.95
+    ) -> Tuple[float, float]:
+        """
+        Calcula intervalos de confianza para predicciones de Random Forest.
+        
+        Args:
+            model: Modelo Random Forest entrenado
+            X: Características para predicción
+            confidence: Nivel de confianza (0-1)
+            
+        Returns:
+            Tuple[float, float]: Límites inferior y superior del intervalo
+        """
+        predictions = []
+        for tree in model.estimators_:
+            predictions.append(tree.predict(X.reshape(1, -1))[0])
+        
+        mean = np.mean(predictions)
+        std = np.std(predictions)
+        z_score = stats.norm.ppf((1 + confidence) / 2)
+        margin = z_score * std
+        
+        return float(mean - margin), float(mean + margin)
+    
     @staticmethod
     def calculate_icum(real_usage: List[float], predicted_usage: List[float]) -> float:
         """
@@ -256,97 +380,172 @@ class PredictionService:
 
         return results
 
-    @staticmethod
-    def predict_shortages(db: Session, medication_id: int, months: int = 24) -> Dict:
+    @classmethod
+    def predict_shortages(
+        cls, 
+        db: Session, 
+        medication_id: int, 
+        months: int = 24
+    ) -> Dict:
         """
-        Predice desabastecimientos futuros usando Random Forest, incluyendo condiciones, categorías y tipos de ingesta.
-        """
-        # Preparar datos históricos
-        X, y = PredictionService.prepare_data(db, medication_id, months)
+        Predice desabastecimientos futuros usando Random Forest con características avanzadas.
         
-        if len(X) == 0 or len(y) == 0:
-            raise ValueError("No hay suficientes datos históricos para entrenar el modelo.")
-
-        # Entrenar modelo Random Forest
-        model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight="balanced")
-        model.fit(X, y)
-
-        # Preparar datos para predicción (último mes disponible)
+        Args:
+            db: Sesión de la base de datos
+            medication_id: ID del medicamento a predecir
+            months: Número de meses de datos históricos a considerar
+            
+        Returns:
+            Dict con la predicción y metadatos
+        """
+        # Obtener datos históricos
         historical_data = (
             db.query(Prediction)
             .filter(Prediction.medication_id == medication_id)
-            .order_by(Prediction.date.asc())
-            .limit(months)
+            .order_by(Prediction.date.desc())
+            .limit(months + 6)  # Tomar meses adicionales para análisis de tendencia
             .all()
         )
-        latest = historical_data[-1]
+        historical_data = list(reversed(historical_data))  # Ordenar de más antiguo a más reciente
         
+        if len(historical_data) < 4:
+            raise ValueError("Se necesitan al menos 4 meses de datos históricos.")
+            
         # Obtener información del medicamento
         medication = db.query(Medication).filter(Medication.id == medication_id).first()
         if not medication:
             raise ValueError("Medicamento no encontrado")
-
-        # Calcular características para el último mes
+            
+        # Preparar datos para análisis
         real_usages = [record.real_usage for record in historical_data]
         predicted_usages = [record.predicted_usage for record in historical_data]
-        icums = [PredictionService.calculate_icum([r], [p]) for r, p in zip(real_usages, predicted_usages)]
-
-        real_usage = latest.real_usage
-        predicted_usage = latest.predicted_usage
-        icum = icums[-1]
-        usage_diff = real_usage - predicted_usage
-        moving_avg_3m = PredictionService.calculate_moving_average(real_usages, 3)
-        moving_avg_6m = PredictionService.calculate_moving_average(real_usages, 6)
-        usage_change = (real_usage - real_usages[-2]) / real_usages[-2] if real_usages[-2] != 0 else 0
-        icum_change = (icum - icums[-2]) / icums[-2] if icums[-2] != 0 else 0
-        month_of_year = latest.month_of_year
-        regional_demand = latest.regional_demand
-        restock_time = latest.restock_time or 0
-
+        stocks = [record.stock for record in historical_data]
+        dates = [record.date for record in historical_data]
+        
+        # Calcular métricas avanzadas
+        seasonality_coeff = cls._calculate_seasonality(real_usages)
+        trend = cls._determine_trend(real_usages)
+        avg_consumption = np.mean(real_usages[-6:])  # Consumo promedio de los últimos 6 meses
+        stock_days = (stocks[-1] / avg_consumption * 30) if avg_consumption > 0 else 0  # Días de stock restantes
+        
+        # Preparar características para el modelo
+        latest = historical_data[-1]
+        
+        # Calcular características avanzadas
+        usage_diff = latest.real_usage - latest.predicted_usage
+        moving_avg_3m = cls.calculate_moving_average(real_usages, 3)
+        moving_avg_6m = cls.calculate_moving_average(real_usages, 6)
+        
         # Obtener vectores de características categóricas
-        conditions_vector = PredictionService.get_conditions_vector(db, medication_id)
-        categories_vector = PredictionService.get_categories_vector(medication.category_id)
-        intake_type_vector = PredictionService.get_intake_type_vector(medication.intake_type_id)
-
-        # Características para predicción
+        conditions_vector = cls.get_conditions_vector(db, medication_id)
+        categories_vector = cls.get_categories_vector(medication.category_id)
+        intake_type_vector = cls.get_intake_type_vector(medication.intake_type_id)
+        
+        # Preparar características para el modelo
         features = np.array([[
-            real_usage,
-            predicted_usage,
-            icum,
-            usage_diff,
-            moving_avg_3m,
-            moving_avg_6m,
-            usage_change,
-            icum_change,
-            month_of_year,
-            regional_demand,
-            restock_time
+            latest.real_usage,           # Uso real
+            latest.predicted_usage,      # Uso previsto
+            usage_diff,                  # Diferencia entre real y previsto
+            moving_avg_3m,               # Promedio móvil 3 meses
+            moving_avg_6m,               # Promedio móvil 6 meses
+            seasonality_coeff,           # Coeficiente de estacionalidad
+            trend.value,                 # Tendencia (0=STABLE, 1=UP, 2=DOWN)
+            latest.month_of_year,        # Mes del año (estacionalidad)
+            latest.regional_demand,      # Demanda regional
+            latest.restock_time or 0,    # Tiempo de reabastecimiento
+            stock_days,                  # Días de stock restantes
         ] + conditions_vector + categories_vector + intake_type_vector])
-
-        # Predecir desabastecimiento
+        
+        # Entrenar modelo con datos históricos
+        X, y = cls.prepare_data(db, medication_id, months)
+        if len(X) == 0 or len(y) == 0:
+            raise ValueError("No hay suficientes datos para entrenar el modelo.")
+            
+        model = RandomForestClassifier(
+            n_estimators=100, 
+            random_state=42, 
+            class_weight="balanced",
+            n_jobs=-1
+        )
+        model.fit(X, y)
+        
+        # Hacer predicción
         prediction = model.predict(features)[0]
         probability = model.predict_proba(features)[0][1]
-
-        # Guardar predicción
+        
+        # Calcular intervalos de confianza
+        lower_bound, upper_bound = cls._calculate_confidence_intervals(
+            model, features[0], confidence=0.95
+        )
+        
+        # Determinar nivel y mensaje de alerta
+        alert_level = cls._determine_alert_level(probability, stock_days)
+        alert_message = cls._generate_alert_message(
+            prediction=bool(prediction),
+            probability=probability,
+            stock=stock_days,
+            trend=trend
+        )
+        
+        # Preparar metadatos adicionales
+        metadata = {
+            "model_version": cls.MODEL_VERSION,
+            "features_used": [
+                "real_usage", "predicted_usage", "usage_diff", "moving_avg_3m",
+                "moving_avg_6m", "seasonality_coeff", "trend", "month_of_year",
+                "regional_demand", "restock_time", "stock_days"
+            ],
+            "seasonality": {
+                "coefficient": seasonality_coeff,
+                "period": 12,  # Mensual
+                "type": "multiplicative" if seasonality_coeff > 0.1 else "none"
+            },
+            "trend": {
+                "direction": trend.value,
+                "slope": float(np.polyfit(range(len(real_usages)), real_usages, 1)[0])
+            },
+            "stock_analysis": {
+                "current_stock": latest.stock,
+                "avg_consumption": avg_consumption,
+                "stock_days": stock_days,
+                "alert_level": alert_level.value
+            }
+        }
+        
+        # Crear y guardar la predicción
         db_prediction = Prediction(
             medication_id=medication_id,
             date=datetime.now(),
-            real_usage=real_usage,
-            predicted_usage=predicted_usage,
+            real_usage=latest.real_usage,
+            predicted_usage=latest.predicted_usage,
             stock=latest.stock,
-            month_of_year=(datetime.now().month),
-            regional_demand=regional_demand,
-            restock_time=restock_time,
+            month_of_year=datetime.now().month,
+            regional_demand=latest.regional_demand,
+            restock_time=latest.restock_time or 0,
             shortage=bool(prediction),
-            probability=probability
+            probability=float(probability),
+            seasonality_coefficient=seasonality_coeff,
+            trend=trend.value,
+            alert_level=alert_level.value,
+            alert_message=alert_message,
+            confidence_interval_lower=lower_bound,
+            confidence_interval_upper=upper_bound,
+            metadata_=json.dumps(metadata)
         )
+        
         db.add(db_prediction)
         db.commit()
-
+        
         return {
             "medication_id": medication_id,
             "prediction": "Shortage" if prediction == 1 else "No shortage",
             "probability": float(probability),
-            "features_used": features.tolist(),
-            "timestamp": datetime.now().isoformat()
+            "alert_level": alert_level.value,
+            "alert_message": alert_message,
+            "stock_days": stock_days,
+            "trend": trend.value,
+            "seasonality_coefficient": seasonality_coeff,
+            "confidence_interval": [lower_bound, upper_bound],
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata
         }

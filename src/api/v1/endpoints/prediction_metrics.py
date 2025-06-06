@@ -10,8 +10,10 @@ from src.models.prediction import (
     PredictionMetrics,
     PredictionMetricsCreate,
     PredictionMetricsUpdate,
-    PredictionMetricsResponse
+    PredictionMetricsResponse,
+    PredictionResponse
 )
+from src.models.prediction import Prediction as PredictionModel
 
 router = APIRouter(prefix="/prediction-metrics", tags=["prediction-metrics"])
 
@@ -219,3 +221,100 @@ async def get_latest_metrics_for_medication(
         )
     
     return metrics
+
+@router.get(
+    "/{metrics_id}/predictions",
+    response_model=List[PredictionResponse],
+    summary="Obtener predicciones generadas por un modelo",
+    description="""
+    Obtiene todas las predicciones generadas por un modelo de predicción específico,
+    identificado por su ID de métricas.
+    
+    Las predicciones se devuelven ordenadas por fecha de forma descendente (más recientes primero).
+    """,
+    responses={
+        200: {
+            "description": "Lista de predicciones generadas por el modelo",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": 101,
+                            "medication_id": 1,
+                            "date": "2025-06-01T00:00:00",
+                            "predicted_value": 150,
+                            "actual_value": 145,
+                            "probability": 0.87,
+                            "confidence_interval_lower": 120,
+                            "confidence_interval_upper": 180,
+                            "alert_level": "medium",
+                            "trend": "up",
+                            "seasonality_coefficient": 1.2,
+                            "created_at": "2025-06-01T10:30:00.000000"
+                        }
+                    ]
+                }
+            }
+        },
+        401: {"description": "No autenticado - Credenciales no proporcionadas o inválidas"},
+        403: {"description": "No autorizado - El usuario no tiene permisos suficientes"},
+        404: {"description": "No se encontró el modelo o no tiene predicciones registradas"}
+    }
+)
+async def get_predictions_by_metrics(
+    metrics_id: int = Path(
+        ...,
+        description="ID único de las métricas del modelo de predicción",
+        example=42,
+        gt=0
+    ),
+    limit: int = Query(
+        100,
+        description="Número máximo de predicciones a devolver",
+        ge=1,
+        le=1000,
+        example=50
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> List[PredictionResponse]:
+    """
+    Obtiene todas las predicciones generadas por un modelo específico.
+    
+    Este endpoint permite recuperar el historial de predicciones realizadas por un modelo
+    de predicción en particular, lo que es útil para analizar su rendimiento a lo largo
+    del tiempo o para auditar sus resultados.
+    
+    **Requisitos de autenticación:**
+    - Se requiere un token JWT válido
+    - El usuario debe estar autenticado
+    
+    **Parámetros de consulta:**
+    - `limit`: Limita el número de resultados devueltos (valor por defecto: 100)
+    
+    **Respuestas:**
+    - 200: OK - Lista de predicciones
+    - 401: No autenticado
+    - 403: No autorizado
+    - 404: No encontrado (modelo o predicciones no existen)
+    """
+    # Verificar que las métricas existen
+    metrics = db.get(PredictionMetrics, metrics_id)
+    if not metrics:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró el modelo con ID {metrics_id}"
+        )
+    
+    # Obtener las predicciones asociadas a estas métricas
+    predictions = db.query(PredictionModel).filter(
+        PredictionModel.prediction_metrics_id == metrics_id
+    ).order_by(PredictionModel.date.desc()).limit(limit).all()
+    
+    if not predictions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El modelo con ID {metrics_id} no tiene predicciones registradas"
+        )
+    
+    return predictions

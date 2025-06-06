@@ -8,6 +8,7 @@ Esta documentación describe los endpoints disponibles para gestionar las métri
 - [Crear Nueva Métrica](#crear-nueva-métrica)
 - [Obtener Métricas por Medicamento](#obtener-métricas-por-medicamento)
 - [Obtener Últimas Métricas de un Medicamento](#obtener-últimas-métricas-de-un-medicamento)
+- [Obtener Predicciones por Modelo](#obtener-predicciones-por-modelo)
 
 ---
 
@@ -332,10 +333,90 @@ Accept: application/json
 
 ---
 
+## Obtener Predicciones por Modelo
+
+Obtiene todas las predicciones generadas por un modelo de predicción específico.
+
+### URL
+```
+GET /api/v1/prediction-metrics/{metric_id}/predictions
+```
+
+### Parámetros de Ruta
+| Parámetro | Tipo | Descripción                |
+|-----------|------|----------------------------|
+| metric_id | int  | ID de la métrica del modelo |
+
+### Parámetros de Consulta
+| Parámetro | Tipo | Requerido | Descripción                              |
+|-----------|------|-----------|------------------------------------------|
+| limit     | int  | No        | Límite de resultados (por defecto: 100)  |
+
+### Encabezados
+```
+Authorization: Bearer <token_jwt>
+Accept: application/json
+```
+
+### Respuesta Exitosa (200 OK)
+```json
+[
+  {
+    "id": 101,
+    "medication_id": 1,
+    "date": "2025-06-01T00:00:00",
+    "predicted_value": 150,
+    "actual_value": 145,
+    "probability": 0.87,
+    "confidence_interval_lower": 120,
+    "confidence_interval_upper": 180,
+    "alert_level": "medium",
+    "trend": "up",
+    "seasonality_coefficient": 1.2,
+    "created_at": "2025-06-01T10:30:00.000000"
+  },
+  {
+    "id": 102,
+    "medication_id": 1,
+    "date": "2025-05-31T00:00:00",
+    "predicted_value": 140,
+    "actual_value": 138,
+    "probability": 0.82,
+    "confidence_interval_lower": 110,
+    "confidence_interval_upper": 170,
+    "alert_level": "low",
+    "trend": "stable",
+    "seasonality_coefficient": 1.1,
+    "created_at": "2025-05-31T10:30:00.000000"
+  }
+]
+```
+
+### Campos de Respuesta
+| Campo                     | Tipo    | Descripción                                      |
+|---------------------------|---------|--------------------------------------------------|
+| id                        | int     | ID único de la predicción                       |
+| medication_id            | int     | ID del medicamento                              |
+| date                     | string  | Fecha de la predicción (YYYY-MM-DD)             |
+| predicted_value          | float   | Valor predicho                                  |
+| actual_value             | float   | Valor real (si está disponible)                 |
+| probability              | float   | Probabilidad de desabastecimiento (0-1)         |
+| confidence_interval_lower| float   | Límite inferior del intervalo de confianza      |
+| confidence_interval_upper| float   | Límite superior del intervalo de confianza      |
+| alert_level              | string  | Nivel de alerta (low/medium/high)               |
+| trend                   | string  | Tendencia (up/down/stable)                      |
+| seasonality_coefficient | float   | Coeficiente de estacionalidad                   |
+| created_at              | string  | Fecha y hora de creación del registro           |
+
+### Posibles Errores
+- **401 Unauthorized**: Token no proporcionado o inválido
+- **403 Forbidden**: Usuario no tiene permisos suficientes
+- **404 Not Found**: No se encontró el modelo o no tiene predicciones
+
 ## Consideraciones Adicionales
 
 1. **Autenticación**: Todos los endpoints requieren autenticación mediante JWT.
-2. **Permisos**: Algunos endpoints pueden requerir privilegios de administrador.
+2. **Permisos**: Algunas operaciones pueden requerir permisos de administrador.
 3. **Paginación**: Los endpoints que devuelven listas soportan paginación mediante los parámetros `limit` y `offset`.
-4. **Ordenación**: Los resultados se ordenan por fecha de entrenamiento de forma descendente por defecto.
+4. **Filtros**: Se pueden aplicar filtros para obtener resultados más específicos.
 5. **Formatos de Fecha**: Todas las fechas siguen el formato ISO 8601 (ej: "2025-06-05T16:25:00.000000").
