@@ -25,8 +25,34 @@ class EvaluationResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 # Simple test endpoint
-@router.get("/test")
+@router.get(
+    "/test",
+    tags=["predictions"],
+    summary="Endpoint de prueba",
+    description="""
+    Endpoint de prueba para verificar que el módulo de predicciones está funcionando correctamente.
+    
+    No requiere autenticación y siempre devuelve un mensaje de éxito.
+    """,
+    response_description="Mensaje de confirmación de que el endpoint está funcionando",
+    responses={
+        200: {
+            "description": "El endpoint está funcionando correctamente",
+            "content": {
+                "application/json": {
+                    "example": {"message": "Predictions endpoint is working!"}
+                }
+            }
+        }
+    }
+)
 async def test_endpoint():
+    """
+    Verifica que el endpoint de predicciones esté funcionando.
+    
+    Returns:
+        dict: Un mensaje indicando que el endpoint está funcionando correctamente.
+    """
     return {"message": "Predictions endpoint is working!"}
 
 # Predict endpoint
@@ -35,13 +61,61 @@ async def test_endpoint():
     response_model=PredictionResponse,
     tags=["predictions"],
     summary="Predecir desabastecimiento",
-    description="Obtiene una predicción de desabastecimiento para un medicamento específico.",
+    description="""
+    Obtiene una predicción de desabastecimiento para un medicamento específico.
+    
+    Este endpoint utiliza el historial de consumo del medicamento y otros factores
+    para predecir posibles desabastecimientos en el corto y mediano plazo.
+    
+    Requiere autenticación con token JWT.
+    """,
+    response_description="Predicción generada exitosamente",
     responses={
-        200: {"description": "Predicción generada exitosamente"},
-        400: {"description": "ID de medicamento no proporcionado"},
-        401: {"description": "No autorizado - Se requiere autenticación"},
-        404: {"description": "Medicamento no encontrado"},
-        500: {"description": "Error interno del servidor"}
+        200: {
+            "description": "Predicción generada exitosamente",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "medication_id": 1,
+                        "prediction": "low_risk",
+                        "probability": 0.15,
+                        "timestamp": "2025-06-05T12:00:00Z"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Solicitud incorrecta",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "ID de medicamento no proporcionado"}
+                }
+            }
+        },
+        401: {
+            "description": "No autorizado",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "No autenticado"}
+                }
+            }
+        },
+        404: {
+            "description": "Recurso no encontrado",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Medicamento no encontrado"}
+                }
+            }
+        },
+        500: {
+            "description": "Error interno del servidor",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Error interno al procesar la solicitud"}
+                }
+            }
+        }
     }
 )
 async def predict_shortage(

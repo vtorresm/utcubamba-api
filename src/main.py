@@ -21,14 +21,59 @@ origins = [
 allow_methods = ["*"]
 
 # Lista de encabezados permitidos
-# Crear la aplicación FastAPI
+# Crear la aplicación FastAPI con metadatos mejorados
 app = FastAPI(
     title="Utcubamba API",
     version="1.0.0",
-    description="API para el sistema de predicción de desabastecimiento de medicamentos",
+    description="""
+    ## API para el sistema de predicción de desabastecimiento de medicamentos
+    
+    Esta API proporciona endpoints para:
+    - Predecir desabastecimientos de medicamentos
+    - Gestionar predicciones históricas
+    - Monitorear el rendimiento de los modelos de predicción
+    - Gestionar métricas de modelos
+    
+    ### Autenticación
+    La API utiliza autenticación JWT. Inclya el token en el encabezado `Authorization: Bearer <token>`
+    """,
+    contact={
+        "name": "Soporte Técnico",
+        "email": "soporte@utcubamba.com"
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT"
+    },
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
+    openapi_tags=[
+        {
+            "name": "auth",
+            "description": "Autenticación y gestión de usuarios"
+        },
+        {
+            "name": "users",
+            "description": "Operaciones con usuarios"
+        },
+        {
+            "name": "medications",
+            "description": "Gestión de medicamentos"
+        },
+        {
+            "name": "predictions",
+            "description": "Predicciones de desabastecimiento"
+        },
+        {
+            "name": "prediction-metrics",
+            "description": "Métricas de rendimiento de modelos de predicción"
+        },
+        {
+            "name": "categories",
+            "description": "Categorías de medicamentos"
+        }
+    ]
 )
 
 # Configurar CORS
