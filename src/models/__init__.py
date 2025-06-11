@@ -21,7 +21,10 @@ from .condition import Condition, ConditionCreate, ConditionUpdate, ConditionInD
 from .intake_type import IntakeType, IntakeTypeCreate, IntakeTypeUpdate, IntakeTypeInDB
 from .medication import Medication, MedicationCreate, MedicationUpdate, MedicationInDB
 from .movement import Movement, MovementCreate, MovementUpdate, MovementInDB, MovementType
-from .prediction import Prediction, PredictionCreate, PredictionUpdate, PredictionInDB
+from .prediction import (
+    Prediction, PredictionCreate, PredictionUpdate, PredictionInDB, PredictionResponse,
+    PredictionMetrics, PredictionMetricsCreate, PredictionMetricsUpdate, PredictionMetricsResponse
+)
 from .medication_condition import MedicationConditionLink
 
 # Re-export all models
@@ -40,6 +43,7 @@ __all__ = [
     'IntakeType', 'IntakeTypeCreate', 'IntakeTypeUpdate', 'IntakeTypeInDB',
     'Medication', 'MedicationCreate', 'MedicationUpdate', 'MedicationInDB',
     'Movement', 'MovementCreate', 'MovementUpdate', 'MovementInDB', 'MovementType',
-    'Prediction', 'PredictionCreate', 'PredictionUpdate', 'PredictionInDB',
+    'Prediction', 'PredictionCreate', 'PredictionUpdate', 'PredictionInDB', 'PredictionResponse',
+    'PredictionMetrics', 'PredictionMetricsCreate', 'PredictionMetricsUpdate', 'PredictionMetricsResponse',
     'MedicationConditionLink'
 ]
