@@ -59,7 +59,10 @@ class Medication(MedicationBase, BaseModel, table=True):
     movements: List["Movement"] = Relationship(back_populates="medication")
     
     # One-to-many relationship with Prediction
-    predictions: List["Prediction"] = Relationship(back_populates="medication")
+    predictions: List["Prediction"] = Relationship(
+        back_populates="medication",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 class MedicationCreate(MedicationBase):
     """Model for creating a new medication."""

@@ -358,28 +358,53 @@ def update_medication(
 def delete_medication(
     medication_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user) if AUTH_ENABLED else None
 ):
     """
     Delete a medication.
+    
+    Args:
+        medication_id: ID of the medication to delete
+        
+    Returns:
+        None (204 No Content on success)
+        
+    Raises:
+        HTTPException: 403 if user is not admin (when auth is enabled)
+        HTTPException: 404 if medication not found
+        HTTPException: 500 if there's a server error
     """
-    # Check if user has admin permissions
-    if current_user.role != Role.ADMIN:
+    try:
+        # Check if user has admin permissions (only when auth is enabled)
+        if AUTH_ENABLED and (current_user is None or current_user.role != Role.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+        
+        # Get the medication
+        db_medication = db.query(Medication).filter(Medication.id == medication_id).first()
+        if db_medication is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Medication not found"
+            )
+        
+        # Delete the medication
+        db.delete(db_medication)
+        db.commit()
+        
+        return None
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 403, 404) as is
+        raise
+        
+    except Exception as e:
+        # Log the error and return 500 for any other exceptions
+        print(f"Error deleting medication {medication_id}: {str(e)}")
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting medication: {str(e)}"
         )
-    
-    # TODO: Replace with actual Medication model import
-    from src.models import Medication
-    
-    # Get the medication
-    db_medication = db.query(Medication).filter(Medication.id == medication_id).first()
-    if db_medication is None:
-        raise HTTPException(status_code=404, detail="Medication not found")
-    
-    # Delete the medication
-    db.delete(db_medication)
-    db.commit()
-    return None
-
