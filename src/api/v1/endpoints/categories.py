@@ -17,7 +17,7 @@ router = APIRouter()
 
 # Get all categories
 @router.get(
-    "/", 
+    "/",
     response_model=List[CategoryResponse],
     summary="Listar categorías",
     description="Obtiene una lista de todas las categorías disponibles.",
@@ -32,11 +32,11 @@ def get_categories(
 ):
     """
     Obtiene una lista de todas las categorías disponibles.
-    
+
     Parámetros:
     - skip: Número de registros a omitir (para paginación)
     - limit: Número máximo de registros a devolver (máx. 1000)
-    
+
     Retorna una lista de categorías.
     """
     try:
@@ -65,10 +65,10 @@ def get_category(
 ):
     """
     Obtiene una categoría específica por su ID.
-    
+
     Parámetros:
     - category_id: ID de la categoría a buscar
-    
+
     Retorna la categoría si se encuentra, de lo contrario devuelve un error 404.
     """
     category = db.query(Category).filter(Category.id == category_id).first()

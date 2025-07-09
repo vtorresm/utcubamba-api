@@ -26,14 +26,14 @@ router = APIRouter(prefix="/prediction-metrics", tags=["prediction-metrics"])
 async def get_prediction_metrics(
     medication_id: Optional[int] = Query(None, description="Filtrar por ID de medicamento"),
     model_version: Optional[str] = Query(None, description="Filtrar por versión del modelo"),
-    days: int = Query(30, description="Número de días hacia atrás para obtener métricas", ge=1, le=365),
+    days: int = Query(30, description="Número de días hacia atrás para obtener métricas (0 para desactivar filtro de fecha)", ge=0, le=365),
     limit: int = Query(100, description="Número máximo de registros a devolver", ge=1, le=1000),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> List[PredictionMetricsResponse]:
     """
     Obtiene métricas de modelos de predicción con filtros opcionales.
-    
+
     Requiere autenticación y permisos de administrador.
     """
     if current_user.role != Role.ADMIN:
@@ -41,22 +41,23 @@ async def get_prediction_metrics(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para acceder a estas métricas"
         )
-    
+
     query = db.query(PredictionMetrics)
-    
+
     # Aplicar filtros
     if medication_id is not None:
         query = query.filter(PredictionMetrics.medication_id == medication_id)
     if model_version:
         query = query.filter(PredictionMetrics.model_version == model_version)
-    
-    # Filtrar por fecha
-    start_date = datetime.utcnow() - timedelta(days=days)
-    query = query.filter(PredictionMetrics.trained_at >= start_date)
-    
+
+    # Filtro de fecha opcional: solo si days > 0
+    if days is not None and days > 0:
+        start_date = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(PredictionMetrics.trained_at >= start_date)
+
     # Ordenar y limitar resultados
     metrics = query.order_by(PredictionMetrics.trained_at.desc()).limit(limit).all()
-    
+
     return metrics
 
 @router.get(
@@ -76,7 +77,7 @@ async def get_prediction_metric_by_id(
 ) -> PredictionMetricsResponse:
     """
     Obtiene métricas de un modelo de predicción por su ID.
-    
+
     Requiere autenticación y permisos de administrador.
     """
     if current_user.role != Role.ADMIN:
@@ -84,14 +85,14 @@ async def get_prediction_metric_by_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para acceder a estas métricas"
         )
-    
+
     metrics = db.get(PredictionMetrics, metrics_id)
     if not metrics:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontraron métricas con el ID {metrics_id}"
         )
-    
+
     return metrics
 
 @router.post(
@@ -112,7 +113,7 @@ async def create_prediction_metrics(
 ) -> PredictionMetricsResponse:
     """
     Registra nuevas métricas para un modelo de predicción.
-    
+
     Requiere autenticación y permisos de administrador.
     """
     if current_user.role != Role.ADMIN:
@@ -120,13 +121,13 @@ async def create_prediction_metrics(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para registrar métricas"
         )
-    
+
     # Verificar si ya existe una métrica con la misma versión para este medicamento
     existing_metrics = db.query(PredictionMetrics).filter(
         PredictionMetrics.model_version == metrics_data.model_version,
         PredictionMetrics.medication_id == metrics_data.medication_id
     ).first()
-    
+
     if existing_metrics:
         # Actualizar métricas existentes
         for key, value in metrics_data.dict(exclude_unset=True).items():
@@ -137,10 +138,10 @@ async def create_prediction_metrics(
         metrics_dict = metrics_data.dict()
         metrics = PredictionMetrics(**metrics_dict)
         db.add(metrics)
-    
+
     db.commit()
     db.refresh(existing_metrics if existing_metrics else metrics)
-    
+
     return existing_metrics if existing_metrics else metrics
 
 @router.get(
@@ -161,7 +162,7 @@ async def get_metrics_by_medication(
 ) -> List[PredictionMetricsResponse]:
     """
     Obtiene las métricas de modelos de predicción para un medicamento específico.
-    
+
     Requiere autenticación.
     """
     # Verificar que el medicamento existe
@@ -172,12 +173,12 @@ async def get_metrics_by_medication(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontró el medicamento con ID {medication_id}"
         )
-    
+
     # Obtener métricas ordenadas por fecha de entrenamiento (más recientes primero)
     metrics = db.query(PredictionMetrics).filter(
         PredictionMetrics.medication_id == medication_id
     ).order_by(PredictionMetrics.trained_at.desc()).limit(limit).all()
-    
+
     return metrics
 
 @router.get(
@@ -197,7 +198,7 @@ async def get_latest_metrics_for_medication(
 ) -> PredictionMetricsResponse:
     """
     Obtiene las métricas más recientes para un medicamento específico.
-    
+
     Requiere autenticación.
     """
     # Verificar que el medicamento existe
@@ -208,18 +209,18 @@ async def get_latest_metrics_for_medication(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontró el medicamento con ID {medication_id}"
         )
-    
+
     # Obtener la métrica más reciente para este medicamento
     metrics = db.query(PredictionMetrics).filter(
         PredictionMetrics.medication_id == medication_id
     ).order_by(PredictionMetrics.trained_at.desc()).first()
-    
+
     if not metrics:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontraron métricas para el medicamento con ID {medication_id}"
         )
-    
+
     return metrics
 
 @router.get(
@@ -229,7 +230,7 @@ async def get_latest_metrics_for_medication(
     description="""
     Obtiene todas las predicciones generadas por un modelo de predicción específico,
     identificado por su ID de métricas.
-    
+
     Las predicciones se devuelven ordenadas por fecha de forma descendente (más recientes primero).
     """,
     responses={
@@ -280,18 +281,18 @@ async def get_predictions_by_metrics(
 ) -> List[PredictionResponse]:
     """
     Obtiene todas las predicciones generadas por un modelo específico.
-    
+
     Este endpoint permite recuperar el historial de predicciones realizadas por un modelo
     de predicción en particular, lo que es útil para analizar su rendimiento a lo largo
     del tiempo o para auditar sus resultados.
-    
+
     **Requisitos de autenticación:**
     - Se requiere un token JWT válido
     - El usuario debe estar autenticado
-    
+
     **Parámetros de consulta:**
     - `limit`: Limita el número de resultados devueltos (valor por defecto: 100)
-    
+
     **Respuestas:**
     - 200: OK - Lista de predicciones
     - 401: No autenticado
@@ -305,16 +306,16 @@ async def get_predictions_by_metrics(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontró el modelo con ID {metrics_id}"
         )
-    
+
     # Obtener las predicciones asociadas a estas métricas
     predictions = db.query(PredictionModel).filter(
         PredictionModel.prediction_metrics_id == metrics_id
     ).order_by(PredictionModel.date.desc()).limit(limit).all()
-    
+
     if not predictions:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"El modelo con ID {metrics_id} no tiene predicciones registradas"
         )
-    
+
     return predictions

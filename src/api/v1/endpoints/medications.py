@@ -29,7 +29,7 @@ router = APIRouter()
 def test_endpoint():
     """
     Endpoint de prueba para verificar el funcionamiento del módulo de medicamentos.
-    
+
     Returns:
         dict: Mensaje de confirmación del estado del endpoint
     """
@@ -37,7 +37,7 @@ def test_endpoint():
 
 # Get all medications
 @router.get(
-    "/", 
+    "/",
     response_model=Dict[str, Any],
     summary="Listar medicamentos",
     description="Obtiene una lista paginada de medicamentos con filtros opcionales.",
@@ -55,45 +55,45 @@ def get_medications(
 ):
     """
     Obtiene una lista paginada de medicamentos con filtros opcionales.
-    
+
     Parámetros:
     - skip: Número de registros a omitir (para paginación)
     - limit: Número máximo de registros a devolver (máx. 100)
     - name: Filtrar por nombre (búsqueda parcial)
     - category_id: Filtrar por ID de categoría
     - intake_type_id: Filtrar por ID de tipo de ingesta
-    
+
     Retorna un diccionario con los resultados y metadatos de paginación.
     """
     try:
         print(f"\n=== SOLICITUD GET /medications/ ===")
         print(f"Parámetros: skip={skip}, limit={limit}, name={name}, category_id={category_id}")
-        
+
         # Construir la consulta base con joinedload para cargar las relaciones
         query = db.query(Medication).options(
             joinedload(Medication.category),
             joinedload(Medication.intake_type)
         )
-        
+
         # Aplicar filtros si se proporcionan
         if name:
             query = query.filter(Medication.name.ilike(f'%{name}%'))
             print(f"Aplicando filtro por nombre: {name}")
-            
+
         if category_id is not None:
             query = query.filter(Medication.category_id == category_id)
             print(f"Aplicando filtro por categoría: {category_id}")
-            
+
         if intake_type_id is not None:
             query = query.filter(Medication.intake_type_id == intake_type_id)
             print(f"Aplicando filtro por tipo de ingesta: {intake_type_id}")
-        
+
         # Obtener el total de registros (para paginación)
         total = query.count()
-        
+
         # Aplicar paginación
         medications = query.offset(skip).limit(limit).all()
-        
+
         # Convertir los resultados a diccionario usando el modelo de respuesta
         meds_list = []
         for med in medications:
@@ -118,7 +118,7 @@ def get_medications(
                     'location': getattr(med, 'location', None),
                     'notes': getattr(med, 'notes', None)
                 }
-                
+
                 # Añadir la categoría si existe
                 if med.category:
                     med_dict['category'] = {
@@ -126,7 +126,7 @@ def get_medications(
                         'name': med.category.name,
                         'description': med.category.description
                     }
-                
+
                 # Añadir el tipo de ingesta si existe
                 if med.intake_type:
                     med_dict['intake_type'] = {
@@ -136,13 +136,13 @@ def get_medications(
                     }
                 else:
                     med_dict['intake_type'] = None
-                
+
                 # Asegurarse de que todos los campos requeridos estén presentes
                 if 'category' not in med_dict:
                     med_dict['category'] = None
                 if 'intake_type' not in med_dict:
                     med_dict['intake_type'] = None
-                
+
                 # Convertir a la respuesta usando el modelo
                 response_med = MedicationResponse.from_orm(med)
                 med_dict.update(response_med.dict())
@@ -156,7 +156,7 @@ def get_medications(
                     'error': True
                 })
                 continue
-        
+
         return {
             "status": "success",
             "total": total,
@@ -165,7 +165,7 @@ def get_medications(
             "count": len(meds_list),
             "items": meds_list
         }
-        
+
     except Exception as e:
         print(f"Error en endpoint de medicamentos: {str(e)}")
         import traceback
@@ -177,7 +177,7 @@ def get_medications(
 
 # Get specific medication by ID
 @router.get(
-    "/{medication_id}", 
+    "/{medication_id}",
     response_model=Dict[str, Any],
     summary="Obtener medicamento por ID",
     description="Obtiene los detalles de un medicamento específico por su ID.",
@@ -196,30 +196,30 @@ def get_medication(
 ):
     """
     Obtiene un medicamento específico por su ID.
-    
+
     Parámetros:
     - medication_id: ID del medicamento a buscar
-    
+
     Retorna el medicamento si se encuentra, de lo contrario devuelve un error 404.
     """
     try:
         print(f"\n=== SOLICITUD GET /medications/{medication_id} ===")
-        
+
         # Buscar el medicamento por ID
         medication = db.query(Medication).filter(Medication.id == medication_id).first()
-        
+
         if medication is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No se encontró el medicamento con ID {medication_id}"
             )
-        
+
         # Convertir a diccionario usando el modelo de respuesta
         return {
             "status": "success",
             "data": MedicationResponse.from_orm(medication).dict()
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -245,7 +245,7 @@ def create_medication(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
         )
-    
+
     try:
         # Verificar si la categoría existe si se proporciona
         if medication.category_id is not None:
@@ -255,7 +255,7 @@ def create_medication(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Category with id {medication.category_id} not found"
                 )
-        
+
         # Verificar si el tipo de ingesta existe si se proporciona
         if medication.intake_type_id is not None:
             intake_type = db.get(IntakeType, medication.intake_type_id)
@@ -264,16 +264,16 @@ def create_medication(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Intake type with id {medication.intake_type_id} not found"
                 )
-        
+
         # Crear el medicamento
         medication_data = medication.model_dump(exclude={"condition_ids"})
         db_medication = Medication(**medication_data)
-        
+
         # Agregar condiciones si se proporcionan
         if hasattr(medication, 'condition_ids') and medication.condition_ids:
             from src.models.condition import Condition
             from src.models.medication_condition import MedicationConditionLink
-            
+
             for condition_id in medication.condition_ids:
                 condition = db.get(Condition, condition_id)
                 if not condition:
@@ -285,13 +285,13 @@ def create_medication(
                 db_medication.condition_links.append(
                     MedicationConditionLink(condition=condition)
                 )
-        
+
         db.add(db_medication)
         db.commit()
         db.refresh(db_medication)
-        
+
         return db_medication
-        
+
     except Exception as e:
         db.rollback()
         print(f"Error al crear el medicamento: {str(e)}")
@@ -314,7 +314,7 @@ def update_medication(
     try:
         print(f"\n=== SOLICITUD PUT /medications/{medication_id} ===")
         print(f"Datos recibidos: {medication}")
-        
+
         # Obtener el medicamento
         db_medication = db.query(Medication).filter(Medication.id == medication_id).first()
         if not db_medication:
@@ -322,27 +322,27 @@ def update_medication(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No se encontró el medicamento con ID {medication_id}"
             )
-        
+
         # Actualizar solo los campos proporcionados
         update_data = {k: v for k, v in medication.items() if v is not None}
         print(f"Actualizando con datos: {update_data}")
-        
+
         for key, value in update_data.items():
             if hasattr(db_medication, key):
                 setattr(db_medication, key, value)
-        
+
         db.add(db_medication)
         db.commit()
         db.refresh(db_medication)
-        
+
         print(f"Medicamento actualizado exitosamente: {db_medication}")
-        
+
         return {
             "status": "success",
             "message": "Medicamento actualizado exitosamente",
             "data": MedicationResponse.from_orm(db_medication).dict()
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -362,13 +362,13 @@ def delete_medication(
 ):
     """
     Delete a medication.
-    
+
     Args:
         medication_id: ID of the medication to delete
-        
+
     Returns:
         None (204 No Content on success)
-        
+
     Raises:
         HTTPException: 403 if user is not admin (when auth is enabled)
         HTTPException: 404 if medication not found
@@ -381,7 +381,7 @@ def delete_medication(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
             )
-        
+
         # Get the medication
         db_medication = db.query(Medication).filter(Medication.id == medication_id).first()
         if db_medication is None:
@@ -389,17 +389,17 @@ def delete_medication(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Medication not found"
             )
-        
+
         # Delete the medication
         db.delete(db_medication)
         db.commit()
-        
+
         return None
-        
+
     except HTTPException:
         # Re-raise HTTP exceptions (like 403, 404) as is
         raise
-        
+
     except Exception as e:
         # Log the error and return 500 for any other exceptions
         print(f"Error deleting medication {medication_id}: {str(e)}")

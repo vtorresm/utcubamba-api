@@ -15,41 +15,41 @@ script_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.abspath(os.path.join(script_dir, '..'))
 sys.path.insert(0, root_dir)
 
-print("🐍 Iniciando script seed_db.py")
-print(f"📂 Directorio de trabajo: {os.getcwd()}")
-print(f"📂 Directorio del script: {script_dir}")
-print(f"📂 Directorio raíz: {root_dir}")
-print(f"🐍 Versión de Python: {sys.version}")
-print(f"📝 PYTHONPATH: {sys.path}")
+print("Iniciando script seed_db.py")
+print(f"Directorio de trabajo: {os.getcwd()}")
+print(f"Directorio del script: {script_dir}")
+print(f"Directorio raíz: {root_dir}")
+print(f"Versión de Python: {sys.version}")
+print(f"PYTHONPATH: {sys.path}")
 
 # Verificar si los directorios existen
-print("\n🔍 Verificando directorios:")
+print("\nVerificando directorios:")
 print(f"- Script existe: {os.path.exists(script_dir)}")
 print(f"- Raíz existe: {os.path.exists(root_dir)}")
 print(f"- src existe: {os.path.exists(os.path.join(root_dir, 'src'))}")
 print(f"- models existe: {os.path.exists(os.path.join(root_dir, 'src', 'models'))}")
 
-print("\n🔍 Intentando importar módulos SQLModel y SQLAlchemy...")
+print("\nIntentando importar módulos SQLModel y SQLAlchemy...")
 try:
     from sqlmodel import Session, select, SQLModel
     from sqlalchemy.orm import joinedload
-    print("✅ Módulos SQLModel y SQLAlchemy importados correctamente")
+    print("Módulos SQLModel y SQLAlchemy importados correctamente")
     
-    print("\n🔍 Intentando importar desde src.core.database...")
+    print("\nIntentando importar desde src.core.database...")
     try:
         from src.core.database import engine, create_db_and_tables
-        print("✅ Módulo src.core.database importado correctamente")
+        print("Módulo src.core.database importado correctamente")
     except ImportError as e:
-        print(f"❌ Error al importar desde src.core.database: {e}")
+        print(f"Error al importar desde src.core.database: {e}")
         traceback.print_exc()
         raise
     
 except ImportError as e:
-    print(f"❌ Error al importar módulos: {e}")
+    print(f"Error al importar módulos: {e}")
     traceback.print_exc()
     raise
 
-print("\n🔍 Intentando importar modelos desde src.models...")
+print("\nIntentando importar modelos desde src.models...")
 try:
     from src.models import (
         Category,
@@ -64,9 +64,9 @@ try:
         MedicationConditionLink,
         PredictionMetrics
     )
-    print("✅ Modelos importados correctamente")
+    print("Modelos importados correctamente")
 except ImportError as e:
-    print(f"❌ Error al importar modelos: {e}")
+    print(f"Error al importar modelos: {e}")
     traceback.print_exc()
     raise
 from src.core.security import get_password_hash
@@ -191,41 +191,41 @@ def create_prediction_metrics(session: Session, medication_id: Optional[int] = N
 
 def seed_db():
     print("\n" + "="*80)
-    print("🚀 INICIANDO CARGA DE DATOS DE PRUEBA")
+    print("INICIANDO CARGA DE DATOS DE PRUEBA")
     print("="*80)
-    print("🔍 Iniciando función seed_db()")
-    print(f"🔍 Directorio actual: {os.getcwd()}")
-    print(f"🔍 Ruta del script: {os.path.abspath(__file__)}")
+    print("Iniciando función seed_db()")
+    print(f"Directorio actual: {os.getcwd()}")
+    print(f"Ruta del script: {os.path.abspath(__file__)}")
     
     # Create database tables if they don't exist
-    print("\n🔄 Creando tablas de la base de datos si no existen...")
+    print("\nCreando tablas de la base de datos si no existen...")
     try:
-        print("🔍 Llamando a create_db_and_tables()...")
+        print("Llamando a create_db_and_tables()...")
         create_db_and_tables()
-        print("✅ Tablas de la base de datos verificadas/creadas correctamente")
+        print("Tablas de la base de datos verificadas/creadas correctamente")
     except Exception as e:
-        print(f"❌ Error al crear las tablas de la base de datos: {e}")
+        print(f"Error al crear las tablas de la base de datos: {e}")
         import traceback
         traceback.print_exc()
         raise
     
-    print("\n🔌 Conectando a la base de datos...")
+    print("\nConectando a la base de datos...")
     session = None
     try:
         session = Session(engine)
-        print("✅ Conexión a la base de datos establecida correctamente")
+        print("Conexión a la base de datos establecida correctamente")
         
         # Verificar si ya hay datos en la base de datos
         user_count = session.exec(select(User)).first()
         if user_count:
-            print("⚠️  Ya existen datos en la base de datos. No se realizará la carga inicial.")
-            print("   Si desea forzar la recarga de datos, elimine las tablas manualmente.")
+            print("Ya existen datos en la base de datos. No se realizará la carga inicial.")
+            print("Si desea forzar la recarga de datos, elimine las tablas manualmente.")
             return
             
-        print("\n🔄 Iniciando la carga de datos de prueba...")
+        print("\nIniciando la carga de datos de prueba...")
         
         # Create categories if they don't exist
-        print("📂 Creando categorías...")
+        print("Creando categorías...")
         category_names = [
             "Analgésicos", "Antibióticos", "Antipiréticos", "Antihistamínicos",
             "Antiinflamatorios", "Vitaminas", "Antidepresivos", "Antihipertensivos",
@@ -233,16 +233,16 @@ def seed_db():
         ]
         categories = []
         for name in category_names:
-            print(f"  ➕ Creando/Obteniendo categoría: {name}")
+            print(f"Creando/Obteniendo categoría: {name}")
             category = get_or_create(session, Category, name=name)
             categories.append(category)
             
         # Commit the categories
         session.commit()
-        print(f"✅ Se crearon/obtuvieron {len(categories)} categorías")
+        print(f"Se crearon/obtuvieron {len(categories)} categorías")
         
     except Exception as e:
-        print(f"❌ Error durante la carga de datos: {e}")
+        print(f"Error durante la carga de datos: {e}")
         if session:
             session.rollback()
         raise
@@ -256,7 +256,7 @@ def seed_db():
         session = Session(engine)
         
         # Create conditions if they don't exist
-        print("\n📂 Creando condiciones médicas...")
+        print("\nCreando condiciones médicas...")
         condition_names = [
             "Dolor", "Infección", "Fiebre", "Alergia", "Inflamación",
             "Fatiga", "Ansiedad", "Depresión", "Hipertensión", "Diabetes",
@@ -264,42 +264,48 @@ def seed_db():
         ]
         conditions = []
         for name in condition_names:
-            print(f"  ➕ Creando/Obteniendo condición: {name}")
+            print(f"Creando/Obteniendo condición: {name}")
             try:
                 condition = get_or_create(session, Condition, name=name)
                 conditions.append(condition)
             except Exception as e:
                 print(f"Error al crear condición: {e}")
         
-        print(f"✅ Se crearon/obtuvieron {len(conditions)} condiciones médicas")
+        print(f"Se crearon/obtuvieron {len(conditions)} condiciones médicas")
         
-        # Refresh all conditions to ensure they're in the session
+        # Refresh all conditions to ensure they're in the session and have their attributes loaded
         try:
-            conditions = [session.get(Condition, c.id) for c in conditions]
+            # First, make sure all conditions are in the session
+            session.expire_all()
+            conditions = session.exec(select(Condition)).all()
+            # Force load all attributes we'll need
+            for condition in conditions:
+                _ = condition.name
         except Exception as e:
-            print(f"Error al refrescar condiciones: {e}")
+            print(f"Error al actualizar condiciones: {e}")
+            raise
         
         # Commit the conditions
         session.commit()
         
         # Create intake types if they don't exist
-        print("\n📂 Creando tipos de ingesta...")
+        print("\nCreando tipos de ingesta...")
         intake_type_names = [
             "Oral", "Intravenoso", "Tópico", "Inhalado",
             "Sublingual", "Intramuscular", "Oftálmico", "Rectal"
         ]
         intake_types = []
         for name in intake_type_names:
-            print(f"  ➕ Creando/Obteniendo tipo de ingesta: {name}")
+            print(f"Creando/Obteniendo tipo de ingesta: {name}")
             intake_type = get_or_create(session, IntakeType, name=name)
             intake_types.append(intake_type)
         
         # Commit todos los cambios
         session.commit()
-        print(f"✅ Se crearon/obtuvieron {len(intake_types)} tipos de ingesta")
+        print(f"Se crearon/obtuvieron {len(intake_types)} tipos de ingesta")
         
     except Exception as e:
-        print(f"❌ Error durante la carga de condiciones y tipos de ingesta: {e}")
+        print(f"Error durante la carga de condiciones y tipos de ingesta: {e}")
         if session:
             session.rollback()
         raise
@@ -313,7 +319,7 @@ def seed_db():
         session = Session(engine)
         
         # Create test users
-        print("\n👥 Creando usuarios de prueba...")
+        print("\nCreando usuarios de prueba...")
         users = [
             {
                 "email": "admin@example.com",
@@ -504,9 +510,12 @@ def seed_db():
                 session.commit()
                 session.refresh(medication)
                 
-                # Add conditions
+                # Add conditions - ensure we have fresh conditions in the current session
+                session.expire_all()
+                current_conditions = session.exec(select(Condition)).all()
+                
                 for cond_name in condition_names:
-                    condition = next((c for c in conditions if c.name == cond_name), None)
+                    condition = next((c for c in current_conditions if c.name == cond_name), None)
                     if condition:
                         link = MedicationConditionLink(
                             medication_id=medication.id,
@@ -620,10 +629,10 @@ def seed_db():
             session.commit()
         
         print("Datos de movimientos y predicciones generados exitosamente.")
-        print("¡Base de datos poblada exitosamente!")
+        print("Base de datos poblada exitosamente.")
         
         # Crear métricas de predicción para algunos medicamentos
-        print("🌱 Seeding prediction metrics...")
+        print("Seeding prediction metrics...")
         
         # Obtener algunos medicamentos de ejemplo
         medications = session.exec(select(Medication).limit(10)).all()
@@ -636,7 +645,7 @@ def seed_db():
             base_mse=250.0,
             base_r2=0.88
         )
-        print(f"✅ Created global metrics (ID: {global_metrics.id})")
+        print(f"Created global metrics (ID: {global_metrics.id})")
         
         # Crear métricas específicas para cada medicamento
         for i, med in enumerate(medications):
@@ -650,13 +659,13 @@ def seed_db():
                     base_mse=random.uniform(150.0, 400.0),
                     base_r2=random.uniform(0.8, 0.95)
                 )
-                print(f"✅ Created metrics for medication {med.id} (ID: {metrics.id})")
+                print(f"Created metrics for medication {med.id} (ID: {metrics.id})")
         
         # Commit all changes
         session.commit()
         
         # Asociar predicciones existentes a métricas
-        print("🔗 Associating existing predictions with metrics...")
+        print("Associating existing predictions with metrics...")
         predictions = session.exec(select(Prediction)).all()
         metrics_list = session.exec(select(PredictionMetrics)).all()
         
@@ -666,12 +675,12 @@ def seed_db():
                 pred.metrics = random.choice(metrics_list)
             
             session.commit()
-            print(f"✅ Associated {len(predictions)} predictions with metrics")
+            print(f"Associated {len(predictions)} predictions with metrics")
         
-        print("✅ Database seeded successfully!")
+        print("Database seeded successfully!")
         
     except Exception as e:
-        print(f"❌ Error durante la carga de usuarios, medicamentos y predicciones: {e}")
+        print(f"Error durante la carga de usuarios, medicamentos y predicciones: {e}")
         if session:
             session.rollback()
         raise

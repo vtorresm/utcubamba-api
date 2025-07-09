@@ -37,30 +37,30 @@ class RegisterRequest(BaseModel):
     cargo: str = Field(..., min_length=2, max_length=100, description="Cargo o puesto del usuario")
     departamento: str = Field(..., min_length=2, max_length=100, description="Departamento o área al que pertenece el usuario")
     contacto: Optional[str] = Field(
-        None, 
-        min_length=8, 
-        max_length=50, 
+        None,
+        min_length=8,
+        max_length=50,
         description="Número de teléfono o extensión (opcional)",
         example="+51987654321"
     )
     role: Role = Field(
-        default=Role.USER, 
+        default=Role.USER,
         description=f"Rol del usuario en el sistema. Valores permitidos: {', '.join([r.value for r in Role])}"
     )
-    
+
     @validator('role')
     def validate_role(cls, v):
         if v not in [r.value for r in Role]:
             raise ValueError(f"Rol inválido. Debe ser uno de: {', '.join([r.value for r in Role])}")
         return v
-    
+
     @validator('email')
     def validate_email_domain(cls, v):
         # Validar que el correo sea institucional (puedes personalizar el dominio)
         if not v.endswith(('@utcubamba.edu.pe', '@gmail.com')):  # Agrega los dominios permitidos
             raise ValueError("El correo debe ser institucional")
         return v.lower()
-    
+
     class Config:
         schema_extra = {
             "example": {
@@ -76,7 +76,7 @@ class RegisterRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     email: EmailStr = Field(..., description="Correo electrónico del usuario")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -105,13 +105,13 @@ async def login(
 ) -> Dict[str, Any]:
     """
     Inicia sesión y devuelve un token JWT.
-    
+
     - **username**: Email del usuario
     - **password**: Contraseña del usuario
     """
     try:
         print(f"[AUTH] Intento de inicio de sesión para el usuario: {request.username}")
-        
+
         # Verificar el usuario
         user = AuthService.verify_user(db, request.username, request.password)
         if not user:
@@ -120,18 +120,18 @@ async def login(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "invalid_credentials", "message": "Credenciales incorrectas"}
             )
-        
+
         print(f"[AUTH] Usuario autenticado: {user.email}, Rol: {user.role}")
-        
+
         # Crear token de acceso
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = AuthService.create_access_token(
-            data={"sub": user.email, "role": user.role}, 
+            data={"sub": user.email, "role": user.role},
             expires_delta=access_token_expires
         )
-        
+
         print("[AUTH] Token generado exitosamente")
-        
+
         # Preparar respuesta
         response_data = {
             "access_token": access_token,
@@ -142,7 +142,7 @@ async def login(
                 "status": user.estado.value if user.estado else None
             }
         }
-        
+
         print(f"[AUTH] Enviando respuesta de autenticación exitosa")
         return response_data
     except HTTPException as e:
@@ -170,7 +170,7 @@ async def register(
 ) -> Dict[str, Any]:
     """
     Registra un nuevo usuario en el sistema con toda su información personal y laboral.
-    
+
     - **nombre**: Nombre completo del usuario (requerido, 2-100 caracteres)
     - **email**: Email institucional (requerido, debe ser único)
     - **password**: Contraseña (requerido, mínimo 6 caracteres)
@@ -191,7 +191,7 @@ async def register(
             contacto=request.contacto,
             role=request.role
         )
-        
+
         # Preparar respuesta exitosa
         response_data = {
             "message": "Usuario registrado exitosamente",
@@ -208,13 +208,13 @@ async def register(
                 "fecha_creacion": user.created_at.isoformat() if user.created_at else None
             }
         }
-        
+
         return response_data
-        
+
     except HTTPException as e:
         # Re-lanzar excepciones HTTP existentes
         raise e
-        
+
     except Exception as e:
         # Manejar cualquier otro error inesperado
         db.rollback()
@@ -234,15 +234,15 @@ async def request_password_reset(
 ):
     """
     Solicita un token para restablecer la contraseña.
-    
+
     - **email**: Correo electrónico del usuario que desea restablecer la contraseña
     """
     from src.services.email_service import EmailService
-    
+
     try:
         # Buscar usuario por email
         user = db.query(User).filter(User.email == request.email).first()
-        
+
         # Si el usuario existe, generar token y enviar correo
         if user:
             token = AuthService.generate_reset_token(db, request.email)
@@ -253,7 +253,7 @@ async def request_password_reset(
                     token=token,
                     username=user.nombre or "Usuario"
                 )
-        
+
         # Por seguridad, siempre devolvemos el mismo mensaje
         return {
             "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
@@ -281,7 +281,7 @@ async def reset_password(
 ) -> Dict[str, str]:
     """
     Restablece la contraseña usando un token de restablecimiento.
-    
+
     - **token**: Token de restablecimiento de contraseña
     - **new_password**: Nueva contraseña (mínimo 6 caracteres)
     """

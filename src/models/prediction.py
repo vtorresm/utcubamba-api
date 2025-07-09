@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship, Column, JSON
-from pydantic import validator
+from pydantic import validator, BaseModel
 
 if TYPE_CHECKING:
     from .medication import Medication
@@ -188,6 +188,16 @@ class PredictionInDB(PredictionBase):
         json_encoders = {
             datetime: lambda v: v.isoformat(),
         }
+
+class PredictionItemResponse(BaseModel):
+    medication_id: int
+    prediction: str
+    probability: float
+    timestamp: datetime
+
+class PredictionsListResponse(BaseModel):
+    total: int
+    predictions: List[PredictionItemResponse]
 
 class PredictionResponse(PredictionBase):
     """

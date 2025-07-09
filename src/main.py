@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Configuración de CORS - Solo permitir el origen del frontend
 origins = [
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
 # Lista de métodos HTTP permitidos
@@ -27,13 +28,13 @@ app = FastAPI(
     version="1.0.0",
     description="""
     ## API para el sistema de predicción de desabastecimiento de medicamentos
-    
+
     Esta API proporciona endpoints para:
     - Predecir desabastecimientos de medicamentos
     - Gestionar predicciones históricas
     - Monitorear el rendimiento de los modelos de predicción
     - Gestionar métricas de modelos
-    
+
     ### Autenticación
     La API utiliza autenticación JWT. Inclya el token en el encabezado `Authorization: Bearer <token>`
     """,
@@ -117,11 +118,3 @@ app.include_router(api_router, prefix="/api/v1")
 def read_root():
     return {"message": "Utcubamba API is running"}
 
-# Manejo de errores global
-@app.exception_handler(Exception)
-async def validation_exception_handler(request, exc):
-    return {
-        "status_code": 500,
-        "message": "Internal Server Error",
-        "details": str(exc)
-    }
