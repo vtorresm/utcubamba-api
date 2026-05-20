@@ -14,8 +14,7 @@ from src.schemas.medication import MedicationResponse, MedicationCreate, Medicat
 from src.dependencies.auth import get_current_user
 from src.models.user import User, Role
 
-# Deshabilitar temporalmente la autenticación
-AUTH_ENABLED = False
+AUTH_ENABLED = True
 
 router = APIRouter()
 
@@ -309,11 +308,15 @@ def update_medication(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Actualiza un medicamento existente (sin autenticación temporalmente).
+    Actualiza un medicamento existente.
     """
+    if AUTH_ENABLED and (not current_user or current_user.role != Role.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
     try:
-        print(f"\n=== SOLICITUD PUT /medications/{medication_id} ===")
-        print(f"Datos recibidos: {medication}")
 
         # Obtener el medicamento
         db_medication = db.query(Medication).filter(Medication.id == medication_id).first()

@@ -31,11 +31,12 @@ class TokenData(BaseModel):
 
 class RegisterRequest(BaseModel):
     """Modelo para la solicitud de registro de usuario."""
-    nombre: str = Field(..., min_length=2, max_length=100, description="Nombre completo del usuario")
-    email: EmailStr = Field(..., description="Email institucional del usuario")
+    nombre: Optional[str] = Field(None, min_length=2, max_length=100, description="Nombre completo del usuario")
+    name: Optional[str] = Field(None, min_length=2, max_length=100, description="Alias de nombre (compatibilidad con frontend)")
+    email: EmailStr = Field(..., description="Email del usuario")
     password: str = Field(..., min_length=6, max_length=100, description="Contraseña con al menos 6 caracteres")
-    cargo: str = Field(..., min_length=2, max_length=100, description="Cargo o puesto del usuario")
-    departamento: str = Field(..., min_length=2, max_length=100, description="Departamento o área al que pertenece el usuario")
+    cargo: Optional[str] = Field(default="", max_length=100, description="Cargo o puesto del usuario")
+    departamento: Optional[str] = Field(default="", max_length=100, description="Departamento o área al que pertenece el usuario")
     contacto: Optional[str] = Field(
         None,
         min_length=8,
@@ -48,28 +49,22 @@ class RegisterRequest(BaseModel):
         description=f"Rol del usuario en el sistema. Valores permitidos: {', '.join([r.value for r in Role])}"
     )
 
+    @validator('nombre', pre=True, always=True)
+    def set_nombre_from_name(cls, v, values):
+        return v or values.get('name') or ''
+
     @validator('role')
     def validate_role(cls, v):
         if v not in [r.value for r in Role]:
             raise ValueError(f"Rol inválido. Debe ser uno de: {', '.join([r.value for r in Role])}")
         return v
 
-    @validator('email')
-    def validate_email_domain(cls, v):
-        # Validar que el correo sea institucional (puedes personalizar el dominio)
-        if not v.endswith(('@utcubamba.edu.pe', '@gmail.com')):  # Agrega los dominios permitidos
-            raise ValueError("El correo debe ser institucional")
-        return v.lower()
-
     class Config:
         schema_extra = {
             "example": {
-                "nombre": "Juan Pérez",
-                "email": "juan.perez@utcubamba.edu.pe",
+                "name": "Juan Pérez",
+                "email": "juan.perez@gmail.com",
                 "password": "miclave123",
-                "cargo": "Docente de Matemáticas",
-                "departamento": "Académico",
-                "contacto": "+51987654321",
                 "role": "user"
             }
         }
@@ -192,20 +187,21 @@ async def register(
             role=request.role
         )
 
-        # Preparar respuesta exitosa
+        # Generar token para auto-login tras el registro
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = AuthService.create_access_token(
+            data={"sub": user.email, "role": user.role},
+            expires_delta=access_token_expires
+        )
+
         response_data = {
             "message": "Usuario registrado exitosamente",
-            "data": {
-                "id": user.id,
-                "nombre": user.nombre,
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
                 "email": user.email,
-                "cargo": user.cargo,
-                "departamento": user.departamento,
-                "contacto": user.contacto,
                 "role": user.role,
-                "estado": user.estado.value,
-                "fecha_ingreso": user.fecha_ingreso.isoformat() if user.fecha_ingreso else None,
-                "fecha_creacion": user.created_at.isoformat() if user.created_at else None
+                "status": user.estado.value if user.estado else None,
             }
         }
 
