@@ -6,6 +6,7 @@ from src.services.auth_service import AuthService
 from src.models.user import Role, User, UserStatus
 from datetime import timedelta, datetime
 import os
+import logging
 from dotenv import load_dotenv
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, Dict, Any
@@ -13,6 +14,8 @@ from fastapi.responses import JSONResponse
 
 load_dotenv()
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -105,18 +108,18 @@ async def login(
     - **password**: Contraseña del usuario
     """
     try:
-        print(f"[AUTH] Intento de inicio de sesión para el usuario: {request.username}")
+        logger.info("[AUTH] Intento de inicio de sesión")
 
         # Verificar el usuario
         user = AuthService.verify_user(db, request.username, request.password)
         if not user:
-            print("[AUTH] Error: Usuario no encontrado o contraseña incorrecta")
+            logger.warning("[AUTH] Credenciales incorrectas para el usuario proporcionado")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": "invalid_credentials", "message": "Credenciales incorrectas"}
             )
 
-        print(f"[AUTH] Usuario autenticado: {user.email}, Rol: {user.role}")
+        logger.info(f"[AUTH] Usuario autenticado con rol: {user.role}")
 
         # Crear token de acceso
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -125,10 +128,7 @@ async def login(
             expires_delta=access_token_expires
         )
 
-        print("[AUTH] Token generado exitosamente")
-
-        # Preparar respuesta
-        response_data = {
+        return {
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
@@ -137,9 +137,6 @@ async def login(
                 "status": user.estado.value if user.estado else None
             }
         }
-
-        print(f"[AUTH] Enviando respuesta de autenticación exitosa")
-        return response_data
     except HTTPException as e:
         raise e
     except Exception as e:

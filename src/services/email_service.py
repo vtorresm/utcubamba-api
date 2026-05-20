@@ -118,7 +118,8 @@ class EmailService:
         """
         subject = "Restablecer contraseña - UTCubamba"
         template_name = "emails/password_reset.html"
-        reset_url = f"http://localhost:3000/reset-password?token={token}"
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        reset_url = f"{frontend_url}/reset-password?token={token}"
         
         context = {
             "username": username,
