@@ -377,46 +377,40 @@ async def get_model_metrics(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> MetricsHistoryResponse:
-    """
-    Obtiene métricas históricas del rendimiento del modelo de predicción.
-    
-    Args:
-        days: Número de días de historial a incluir
-        limit: Número máximo de registros a devolver
-        
-    Returns:
-        MetricsHistoryResponse: Objeto con las métricas del modelo
-    """
+    if current_user.role != Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene permisos suficientes para ver las métricas del modelo"
+        )
+
     try:
-        # Calcular fecha de inicio
         start_date = datetime.utcnow() - timedelta(days=days)
-        
-        # Obtener métricas de la base de datos
+
         metrics_query = (
             db.query(PredictionMetrics)
             .filter(PredictionMetrics.created_at >= start_date)
             .order_by(PredictionMetrics.created_at.desc())
             .limit(limit)
         )
-        
-        # Formatear respuesta
+
         metrics_history = [
             {
                 "date": m.created_at,
                 "mae": m.mae,
                 "mse": m.mse,
                 "r2": m.r2_score,
-                "samples": m.sample_size or 0
             }
             for m in metrics_query.all()
         ]
-        
+
         return MetricsHistoryResponse(
             model_type="RandomForestRegressor",
             last_updated=datetime.utcnow(),
             metrics_history=metrics_history
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error al obtener métricas del modelo: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -521,72 +515,6 @@ async def get_prediction_history(
             detail="Error al recuperar el historial de predicciones"
         )
 
-# Metrics endpoint
-@router.get(
-    "/metrics",
-    response_model=MetricsHistoryResponse,
-    tags=["predictions"],
-    summary="Obtener métricas del modelo",
-    description="Obtiene las últimas métricas de rendimiento del modelo (solo administradores).",
-    responses={
-        200: {"description": "Métricas obtenidas exitosamente"},
-        401: {"description": "No autorizado - Se requiere autenticación"},
-        403: {"description": "No tiene permisos suficientes"},
-        500: {"description": "Error interno del servidor"}
-    }
-)
-async def get_model_metrics(
-    days: int = Query(30, description="Número de días hacia atrás para obtener métricas", ge=1, le=365),
-    limit: int = Query(100, description="Número máximo de registros a devolver", ge=1, le=1000),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> MetricsHistoryResponse:
-    # Verificar si el usuario es administrador
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tiene permisos suficientes para ver las métricas del modelo"
-        )
-
-    try:
-        # Aquí iría la lógica real para obtener las métricas históricas de la base de datos
-        # Por ahora, devolvemos datos de ejemplo
-        from datetime import timedelta
-        import random
-
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days)
-
-        # Generar datos de ejemplo para el rango de fechas
-        metrics_history = []
-        current_date = start_date
-
-        while current_date <= end_date and len(metrics_history) < limit:
-            base_accuracy = 0.9 + random.uniform(-0.05, 0.05)  # Valor base con pequeña variación
-
-            metrics_history.append({
-                "date": current_date.date().isoformat(),
-                "accuracy": round(base_accuracy, 4),
-                "precision": round(base_accuracy - 0.01, 4),
-                "recall": round(base_accuracy + 0.01, 4),
-                "f1_score": round(base_accuracy, 4),
-                "roc_auc": round(min(base_accuracy + 0.03, 0.99), 4)  # ROC AUC suele ser un poco más alto
-            })
-
-            # Mover al siguiente día
-            current_date += timedelta(days=1)
-
-        return MetricsHistoryResponse(
-            model_type="RandomForest",
-            metrics_history=metrics_history
-        )
-
-    except Exception as e:
-        print(f"Error al obtener métricas del modelo: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener niveles de riesgo: {str(e)}"
-        )
 
 @router.get(
     "/seasonality",
