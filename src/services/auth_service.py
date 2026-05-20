@@ -6,18 +6,12 @@ from src.models.user import User, Role, UserStatus
 from src.models.password_reset_token import PasswordResetToken
 from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-import os
-from dotenv import load_dotenv
 import uuid
+from src.core.config import settings
 
-# Cargar variables de entorno
-load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
-
-# Configuración de OAuth2
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 class AuthService:
     @staticmethod
@@ -226,7 +220,9 @@ class AuthService:
         """
         Restablece la contraseña usando un token.
         """
-        reset_token = db.query(PasswordResetToken).filter(PasswordResetToken.token == token).first()
+        reset_token = db.query(PasswordResetToken).filter(
+            PasswordResetToken.token == token
+        ).with_for_update().first()
         if not reset_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

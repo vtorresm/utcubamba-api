@@ -158,17 +158,34 @@ def predict_shortage_risk(
             periods=days_ahead,
             freq='D'
         )
-        
-        future_data = pd.DataFrame({
-            'date': future_dates,
-            'month': future_dates.month,
-            'day_of_week': future_dates.weekday,
-            'is_weekend': future_dates.weekday >= 5
+
+        # Construir X_future directamente — future_data no tiene 'quantity'
+        # para calcular moving averages, así que usamos las últimas medias históricas
+        df_sorted = df.sort_values('date')
+        hist_ma7 = float(
+            df_sorted['quantity'].rolling(7).mean().dropna().iloc[-1]
+            if len(df_sorted) >= 7 else df_sorted['quantity'].mean()
+        )
+        hist_ma30 = float(
+            df_sorted['quantity'].rolling(30).mean().dropna().iloc[-1]
+            if len(df_sorted) >= 30 else hist_ma7
+        )
+
+        X_future = pd.DataFrame({
+            'quantity_ma7': hist_ma7,
+            'quantity_ma30': hist_ma30,
+            'month_sin': np.sin(2 * np.pi * future_dates.month / 12.0),
+            'month_cos': np.cos(2 * np.pi * future_dates.month / 12.0),
+            'is_weekend': (future_dates.weekday >= 5).astype(float),
         })
-        
-        # Preparar características para predicción
-        X_future, _ = prepare_features(future_data)
-        
+
+        for col in X.columns:
+            if col.startswith('dow_'):
+                day_num = int(col.split('_')[1])
+                X_future[col] = (future_dates.weekday == day_num).astype(float)
+
+        X_future = X_future.reindex(columns=X.columns, fill_value=0)
+
         if X_future.empty:
             raise ValueError("No se pudieron preparar características para la predicción")
         

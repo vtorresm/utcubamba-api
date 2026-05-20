@@ -5,15 +5,13 @@ from src.core.database import get_db
 from src.services.auth_service import AuthService
 from src.models.user import Role, User, UserStatus
 from datetime import timedelta, datetime
-import os
 import logging
-from dotenv import load_dotenv
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, Dict, Any
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from src.core.config import settings
 
-load_dotenv()
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 logger = logging.getLogger(__name__)
 
@@ -128,21 +126,31 @@ async def login(
             expires_delta=access_token_expires
         )
 
-        return {
+        body = {
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
                 "email": user.email,
                 "role": user.role,
-                "status": user.estado.value if user.estado else None
-            }
+                "status": user.estado.value if user.estado else None,
+            },
         }
+        response = JSONResponse(content=body)
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            samesite="lax",
+            secure=settings.ENVIRONMENT == "production",
+        )
+        return response
     except HTTPException as e:
         raise e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "internal_error", "message": "Error interno del servidor"}
+            detail={"error": "internal_error", "message": "Error interno del servidor"},
         )
 
 @router.post(
@@ -191,7 +199,7 @@ async def register(
             expires_delta=access_token_expires
         )
 
-        response_data = {
+        body = {
             "message": "Usuario registrado exitosamente",
             "access_token": access_token,
             "token_type": "bearer",
@@ -199,10 +207,18 @@ async def register(
                 "email": user.email,
                 "role": user.role,
                 "status": user.estado.value if user.estado else None,
-            }
+            },
         }
-
-        return response_data
+        response = JSONResponse(content=body, status_code=201)
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            samesite="lax",
+            secure=settings.ENVIRONMENT == "production",
+        )
+        return response
 
     except HTTPException as e:
         # Re-lanzar excepciones HTTP existentes
