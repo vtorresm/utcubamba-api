@@ -157,10 +157,10 @@ async def get_all_predictions(
             ]
         )
     except Exception as e:
-        print(f"Error al obtener todas las predicciones: {str(e)}")
+        logger.error("Error al obtener predicciones: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener predicciones: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Predict endpoint
@@ -322,10 +322,10 @@ async def predict_shortage(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error en la predicción para medicamento {medicamento_id}: {str(e)}", exc_info=True)
+        logger.error("Error en la predicción para medicamento %s: %s", medicamento_id, str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al generar la predicción: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Metrics response model
@@ -611,10 +611,10 @@ async def get_seasonality_metrics(
         return results
 
     except Exception as e:
-        print(f"Error al obtener métricas de estacionalidad: {str(e)}")
+        logger.error("Error al obtener métricas de estacionalidad: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener métricas de estacionalidad: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 @router.get(
@@ -739,10 +739,10 @@ async def get_demand_trend(
             )
 
     except Exception as e:
-        print(f"Error al analizar tendencia de demanda: {str(e)}")
+        logger.error("Error al analizar tendencia de demanda: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al analizar tendencia de demanda: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Evaluate endpoint
@@ -800,10 +800,10 @@ async def evaluate_model(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error en la evaluación del modelo: {str(e)}")
+        logger.error("Error en la evaluación del modelo: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al evaluar el modelo: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 @router.get(
@@ -871,5 +871,8 @@ async def get_historical_usage(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error en uso histórico: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error al obtener uso histórico: {str(e)}")
+        logger.error("Error al obtener uso histórico: %s", str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
+        )

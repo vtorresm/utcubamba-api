@@ -235,6 +235,12 @@ async def register(
             }
         )
 
+@router.post("/logout", tags=["auth"], status_code=status.HTTP_200_OK)
+async def logout(response: Response):
+    """Cierra sesión eliminando la cookie de autenticación."""
+    response.delete_cookie(key="access_token", path="/", samesite="lax")
+    return {"message": "Sesión cerrada exitosamente"}
+
 @router.post("/password-reset", tags=["auth"])
 async def request_password_reset(
     request: ResetPasswordRequest,

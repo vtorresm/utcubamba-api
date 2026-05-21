@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, and_
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 from src.core.database import get_db
 from src.models.medication import Medication, MedicationCreate
@@ -166,12 +169,10 @@ def get_medications(
         }
 
     except Exception as e:
-        print(f"Error en endpoint de medicamentos: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Error al obtener los medicamentos: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error al obtener los medicamentos: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Get specific medication by ID
@@ -222,10 +223,10 @@ def get_medication(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error al obtener el medicamento: {str(e)}")
+        logger.error("Error al obtener el medicamento: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener el medicamento: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Create new medication
@@ -293,10 +294,10 @@ def create_medication(
 
     except Exception as e:
         db.rollback()
-        print(f"Error al crear el medicamento: {str(e)}")
+        logger.error("Error al crear el medicamento: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al crear el medicamento: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Update medication
@@ -350,10 +351,10 @@ def update_medication(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error al actualizar el medicamento: {str(e)}")
+        logger.error("Error al actualizar el medicamento: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al actualizar el medicamento: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
 
 # Delete medication
@@ -404,10 +405,9 @@ def delete_medication(
         raise
 
     except Exception as e:
-        # Log the error and return 500 for any other exceptions
-        print(f"Error deleting medication {medication_id}: {str(e)}")
         db.rollback()
+        logger.error("Error al eliminar el medicamento %s: %s", medication_id, str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting medication: {str(e)}"
+            detail={"error": "internal_error", "message": "Error interno del servidor"}
         )
