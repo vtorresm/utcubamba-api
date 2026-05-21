@@ -4,7 +4,8 @@ import hashlib
 import logging
 import uuid
 
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
@@ -48,8 +49,7 @@ class AuthService:
         else:
             expire = datetime.utcnow() + timedelta(minutes=15)
         to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
+        return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
     @staticmethod
     def get_current_user(db: Session, token: str) -> User:
@@ -66,7 +66,7 @@ class AuthService:
             email: str = payload.get("sub")
             if email is None:
                 raise credentials_exception
-        except JWTError:
+        except InvalidTokenError:
             raise credentials_exception
         user = db.query(User).filter(User.email == email).first()
         if user is None:
