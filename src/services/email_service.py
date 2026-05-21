@@ -3,18 +3,13 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from fastapi import BackgroundTasks
 from typing import Optional, Dict, Any
-import os
 import logging
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
-from dotenv import load_dotenv
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+from src.core.config import settings
+
 logger = logging.getLogger(__name__)
-
-# Cargar variables de entorno
-load_dotenv()
 
 # Configurar entorno de plantillas
 template_dir = Path(__file__).parent.parent / "templates"
@@ -53,7 +48,7 @@ class EmailService:
             
             # Crear mensaje
             message = MIMEMultipart("alternative")
-            message["From"] = f"{os.getenv('MAIL_FROM_NAME')} <{os.getenv('MAIL_FROM')}>"
+            message["From"] = f"{settings.MAIL_FROM_NAME} <{settings.MAIL_FROM}>"
             message["To"] = to_email
             message["Subject"] = subject
 
@@ -67,15 +62,12 @@ class EmailService:
 
             # Configurar y enviar el correo
             async with aiosmtplib.SMTP(
-                hostname=os.getenv("MAILTRAP_HOST"),
-                port=int(os.getenv("MAILTRAP_PORT", "2525")),
-                use_tls=True
+                hostname=settings.MAILTRAP_HOST,
+                port=settings.MAILTRAP_PORT,
+                use_tls=True,
             ) as smtp:
                 await smtp.connect()
-                await smtp.login(
-                    os.getenv("MAILTRAP_USERNAME"),
-                    os.getenv("MAILTRAP_PASSWORD")
-                )
+                await smtp.login(settings.MAILTRAP_USERNAME, settings.MAILTRAP_PASSWORD)
                 await smtp.send_message(message)
                 
             logger.info(f"Correo enviado exitosamente a {to_email}")
@@ -118,7 +110,7 @@ class EmailService:
         """
         subject = "Restablecer contraseña - UTCubamba"
         template_name = "emails/password_reset.html"
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        frontend_url = settings.FRONTEND_URL
         reset_url = f"{frontend_url}/reset-password?token={token}"
         
         context = {

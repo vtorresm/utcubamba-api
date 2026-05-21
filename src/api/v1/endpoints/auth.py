@@ -112,13 +112,8 @@ async def login(
     try:
         logger.info("[AUTH] Intento de inicio de sesión")
 
+        # verify_user raises HTTP 401 on failure; if it returns, user is authenticated
         user = AuthService.verify_user(db, body.username, body.password)
-        if not user:
-            logger.warning("[AUTH] Credenciales incorrectas para el usuario proporcionado")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": "invalid_credentials", "message": "Credenciales incorrectas"},
-            )
 
         logger.info("[AUTH] Usuario autenticado con rol: %s", user.role)
 

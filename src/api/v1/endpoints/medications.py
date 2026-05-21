@@ -13,11 +13,8 @@ from src.models.category import Category
 from src.models.intake_type import IntakeType
 from src.schemas.medication import MedicationResponse, MedicationCreate, MedicationUpdate
 
-# Comentado temporalmente hasta que la autenticación esté lista
 from src.dependencies.auth import get_current_user
 from src.models.user import User, Role
-
-AUTH_ENABLED = True
 
 router = APIRouter()
 
@@ -52,8 +49,7 @@ def get_medications(
     category_id: Optional[int] = Query(None, description="Filtrar por ID de categoría"),
     intake_type_id: Optional[int] = Query(None, description="Filtrar por ID de tipo de ingesta"),
     db: Session = Depends(get_db),
-    # Descomenta la siguiente línea cuando la autenticación esté lista
-    # current_user: User = Depends(get_current_user) if AUTH_ENABLED else None
+    current_user: User = Depends(get_current_user),
 ):
     """
     Obtiene una lista paginada de medicamentos con filtros opcionales.
@@ -177,8 +173,7 @@ def get_medications(
 def get_medication(
     medication_id: int = Path(..., description="ID del medicamento"),
     db: Session = Depends(get_db),
-    # Descomenta la siguiente línea cuando la autenticación esté lista
-    # current_user: User = Depends(get_current_user) if AUTH_ENABLED else None
+    current_user: User = Depends(get_current_user),
 ):
     """
     Obtiene un medicamento específico por su ID.
@@ -225,7 +220,7 @@ def create_medication(
     Create a new medication.
     """
     # Check if authentication is enabled and user has admin permissions
-    if AUTH_ENABLED and (not current_user or current_user.role != Role.ADMIN):
+    if current_user.role != Role.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -296,7 +291,7 @@ def update_medication(
     """
     Actualiza un medicamento existente.
     """
-    if AUTH_ENABLED and (not current_user or current_user.role != Role.ADMIN):
+    if current_user.role != Role.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -344,7 +339,7 @@ def update_medication(
 def delete_medication(
     medication_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) if AUTH_ENABLED else None
+    current_user: User = Depends(get_current_user)
 ):
     """
     Delete a medication.
@@ -362,7 +357,7 @@ def delete_medication(
     """
     try:
         # Check if user has admin permissions (only when auth is enabled)
-        if AUTH_ENABLED and (current_user is None or current_user.role != Role.ADMIN):
+        if current_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"

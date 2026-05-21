@@ -2,7 +2,11 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import logging
+
 from pydantic import BaseModel, EmailStr, Field
+
+logger = logging.getLogger(__name__)
 
 from src.core.database import get_db
 from src.models.user import User, Role
@@ -47,11 +51,11 @@ class UserResponse(UserBase):
 # Get all users endpoint (admin only)
 @router.get("/", response_model=List[UserResponse])
 async def get_users(
-    skip: int = 0, 
-    limit: int = 100, 
-    current_user: User = Depends(get_current_user), 
-    db: Session = Depends(get_db)
-):
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[UserResponse]:
     """
     Retrieve all users with their complete information.
     Only accessible to admin users.
@@ -70,7 +74,7 @@ async def get_users(
 
 # Get current user endpoint
 @router.get("/me", response_model=UserResponse)
-async def get_user_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_user_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> UserResponse:
     """
     Get current user information.
     """
@@ -83,10 +87,10 @@ async def get_user_me(current_user: User = Depends(get_current_user), db: Sessio
 # Get specific user by ID (admin only)
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
-    user_id: int, 
-    current_user: User = Depends(get_current_user), 
-    db: Session = Depends(get_db)
-):
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserResponse:
     """
     Get a specific user by ID with complete information.
     Only accessible to admin users.
@@ -188,11 +192,12 @@ def update_user(
         return current_user
     except Exception as e:
         db.rollback()
+        logger.error("Error al actualizar usuario: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "update_failed",
-                "message": f"Error al actualizar el usuario: {str(e)}"
+                "message": "Error interno al actualizar el usuario"
             }
         )
 
@@ -278,10 +283,11 @@ def admin_update_user(
         return user
     except Exception as e:
         db.rollback()
+        logger.error("Error al actualizar usuario: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "update_failed",
-                "message": f"Error al actualizar el usuario: {str(e)}"
+                "message": "Error interno al actualizar el usuario"
             }
         )

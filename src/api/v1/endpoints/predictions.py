@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, conint, confloat
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional, Literal
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Tuple
 import logging
+
+logger = logging.getLogger(__name__)
 
 # Database and authentication
 from src.core.database import get_db
@@ -28,8 +29,8 @@ from src.services.prediction_service import (
 )
 
 # SQLAlchemy
-from sqlalchemy import func, and_, or_, text
-from sqlalchemy.sql import extract, case, select
+from sqlalchemy import func
+from sqlalchemy.sql import extract
 
 router = APIRouter()
 
@@ -264,12 +265,12 @@ async def predict_shortage(
         PredictionResponse: Objeto con la predicción y métricas asociadas
     """
     try:
-        logger.info(f"Iniciando predicción para medicamento ID: {medicamento_id}")
+        logger.info("Iniciando predicción para medicamento ID: %s", medicamento_id)
         
         # Verificar si el medicamento existe
         medication = db.query(Medication).filter(Medication.id == medicamento_id).first()
         if not medication:
-            logger.warning(f"Medicamento no encontrado: ID {medicamento_id}")
+            logger.warning("Medicamento no encontrado: ID %s", medicamento_id)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No se encontró el medicamento con ID {medicamento_id}"
@@ -316,7 +317,7 @@ async def predict_shortage(
         # Actualizar ID en la respuesta
         response_data["id"] = db_prediction.id
         
-        logger.info(f"Predicción completada para medicamento ID: {medicamento_id}")
+        logger.info("Predicción completada para medicamento ID: %s", medicamento_id)
         return PredictionResponse(**response_data)
         
     except HTTPException:
@@ -412,10 +413,10 @@ async def get_model_metrics(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error al obtener métricas del modelo: {str(e)}", exc_info=True)
+        logger.error("Error al obtener métricas del modelo: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al obtener las métricas del modelo"
+            detail={"error": "internal_error", "message": "Error interno del servidor"},
         )
 
 @router.get(
@@ -509,10 +510,10 @@ async def get_prediction_history(
         return predictions
         
     except Exception as e:
-        logger.error(f"Error al obtener historial de predicciones: {str(e)}", exc_info=True)
+        logger.error("Error al obtener historial de predicciones: %s", str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al recuperar el historial de predicciones"
+            detail={"error": "internal_error", "message": "Error interno del servidor"},
         )
 
 

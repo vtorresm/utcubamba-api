@@ -10,6 +10,7 @@ from src.api.v1.router import api_router
 from src.core.database import engine, create_db_and_tables
 from src.core.limiter import limiter
 from src.core.logging import setup_logging
+from src.core.config import settings
 import logging
 
 # Configurar logging
@@ -17,10 +18,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # Configuración de CORS - Solo permitir el origen del frontend
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 
 # Lista de métodos HTTP permitidos
 allow_methods = ["*"]
@@ -40,7 +38,7 @@ app = FastAPI(
     - Gestionar métricas de modelos
 
     ### Autenticación
-    La API utiliza autenticación JWT. Inclya el token en el encabezado `Authorization: Bearer <token>`
+    La API utiliza autenticación JWT. Incluya el token en el encabezado `Authorization: Bearer <token>`
     """,
     contact={
         "name": "Soporte Técnico",
