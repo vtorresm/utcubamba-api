@@ -1,83 +1,60 @@
-import os
-import sys
-from pathlib import Path
+import logging
 from typing import Generator
 
-from dotenv import load_dotenv
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import SQLModel, Session, create_engine
 
-# Cargar variables de entorno
-print("Cargando variables de entorno...")
-load_dotenv()
+logger = logging.getLogger(__name__)
 
-# Configura la URL de la base de datos
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/utcubamba_db")
-SQLALCHEMY_DATABASE_URL = DATABASE_URL  # Alias para compatibilidad con Alembic
-print(f"URL de la base de datos: {SQLALCHEMY_DATABASE_URL}")
 
-# Crear el motor de SQLAlchemy
-print("Creando motor de base de datos...")
-try:
+def _get_engine():
+    from src.core.config import settings
+    echo_sql = settings.ENVIRONMENT != "production"
     engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
-        echo=True,  # Habilita el logging de SQL (desactivar en producción)
-        pool_pre_ping=True,  # Verifica la conexión antes de usarla
-        pool_recycle=300,  # Reciclar conexiones después de 5 minutos
+        settings.DATABASE_URL,
+        echo=echo_sql,
+        pool_pre_ping=True,
+        pool_recycle=300,
     )
-    print("Motor de base de datos creado exitosamente")
-except Exception as e:
-    print(f"Error al crear el motor de la base de datos: {e}")
-    raise
+    return engine
 
-def import_models():
-    """Importa todos los modelos para que SQLModel los registre"""
-    print("Iniciando importación de modelos...")
-    # Importar modelos manualmente para asegurar que se registren con SQLAlchemy
-    try:
-        print("Intentando importar modelos individuales...")
-        # Importar todos los modelos para que se registren con SQLAlchemy
-        from src.models.user import User, UserCreate, UserUpdate, UserInDB
-        print("Modelos de usuario importados")
-        from src.models.category import Category, CategoryCreate, CategoryUpdate, CategoryInDB
-        print("Modelos de categoría importados")
-        from src.models.condition import Condition, ConditionCreate, ConditionUpdate, ConditionInDB
-        print("Modelos de condición importados")
-        from src.models.intake_type import IntakeType, IntakeTypeCreate, IntakeTypeUpdate, IntakeTypeInDB
-        print("Modelos de tipo de ingesta importados")
-        from src.models.medication import Medication, MedicationCreate, MedicationUpdate, MedicationInDB
-        print("Modelos de medicamento importados")
-        from src.models.movement import Movement, MovementCreate, MovementUpdate, MovementInDB
-        print("Modelos de movimiento importados")
-        from src.models.prediction import Prediction, PredictionCreate, PredictionUpdate, PredictionInDB
-        print("Modelos de predicción importados")
-        from src.models.medication_condition import MedicationConditionLink
-        print("Modelo de enlace medicamento-condición importado")
-        
-        print("Todos los modelos importados correctamente")
-    except ImportError as e:
-        print(f"Error al importar modelos: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
+
+engine = _get_engine()
+
+
+def _import_models():
+    from src.models.user import User, UserCreate, UserUpdate, UserInDB
+    from src.models.category import Category, CategoryCreate, CategoryUpdate, CategoryInDB
+    from src.models.condition import Condition, ConditionCreate, ConditionUpdate, ConditionInDB
+    from src.models.intake_type import IntakeType, IntakeTypeCreate, IntakeTypeUpdate, IntakeTypeInDB
+    from src.models.medication import Medication, MedicationCreate, MedicationUpdate, MedicationInDB
+    from src.models.movement import Movement, MovementCreate, MovementUpdate, MovementInDB
+    from src.models.prediction import Prediction, PredictionCreate, PredictionUpdate, PredictionInDB
+    from src.models.medication_condition import MedicationConditionLink
+    logger.debug("All models imported successfully")
+
 
 def create_db_and_tables():
-    """Crea todas las tablas definidas en los modelos SQLModel"""
-    # Asegurarse de que los modelos estén importados
-    import_models()
-    
-    # Crear todas las tablas
-    print("Creando tablas de la base de datos...")
+    _import_models()
+    logger.info("Creating database tables...")
     SQLModel.metadata.create_all(engine)
-    print("Tablas creadas exitosamente")
+    logger.info("Database tables created successfully")
+
+
+# Alias kept for Alembic compatibility
+SQLALCHEMY_DATABASE_URL: str
+try:
+    from src.core.config import settings as _s
+    SQLALCHEMY_DATABASE_URL = _s.DATABASE_URL
+except Exception:
+    SQLALCHEMY_DATABASE_URL = ""
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Dependencia para obtener una sesión de base de datos"""
     db = Session(engine)
     try:
         yield db
     finally:
         db.close()
 
-# Asegurarse de que los modelos estén importados cuando se importe este módulo
-import_models()
+
+_import_models()

@@ -68,27 +68,19 @@ def get_medications(
     Retorna un diccionario con los resultados y metadatos de paginación.
     """
     try:
-        print(f"\n=== SOLICITUD GET /medications/ ===")
-        print(f"Parámetros: skip={skip}, limit={limit}, name={name}, category_id={category_id}")
-
-        # Construir la consulta base con joinedload para cargar las relaciones
         query = db.query(Medication).options(
             joinedload(Medication.category),
             joinedload(Medication.intake_type)
         )
 
-        # Aplicar filtros si se proporcionan
         if name:
             query = query.filter(Medication.name.ilike(f'%{name}%'))
-            print(f"Aplicando filtro por nombre: {name}")
 
         if category_id is not None:
             query = query.filter(Medication.category_id == category_id)
-            print(f"Aplicando filtro por categoría: {category_id}")
 
         if intake_type_id is not None:
             query = query.filter(Medication.intake_type_id == intake_type_id)
-            print(f"Aplicando filtro por tipo de ingesta: {intake_type_id}")
 
         # Obtener el total de registros (para paginación)
         total = query.count()
@@ -150,13 +142,7 @@ def get_medications(
                 med_dict.update(response_med.dict())
                 meds_list.append(med_dict)
             except Exception as e:
-                print(f"Error procesando medicamento {med.id if hasattr(med, 'id') else 'unknown'}: {str(e)}")
-                # Añadir un registro de error a la lista para que la respuesta sea consistente
-                meds_list.append({
-                    'id': med.id if hasattr(med, 'id') else 0,
-                    'name': f'Error: {str(e)[:100]}',
-                    'error': True
-                })
+                logger.error("Error procesando medicamento %s: %s", getattr(med, 'id', 'unknown'), str(e), exc_info=True)
                 continue
 
         return {
@@ -203,7 +189,6 @@ def get_medication(
     Retorna el medicamento si se encuentra, de lo contrario devuelve un error 404.
     """
     try:
-        print(f"\n=== SOLICITUD GET /medications/{medication_id} ===")
 
         # Buscar el medicamento por ID
         medication = db.query(Medication).filter(Medication.id == medication_id).first()
@@ -329,7 +314,6 @@ def update_medication(
 
         # Actualizar solo los campos proporcionados
         update_data = {k: v for k, v in medication.items() if v is not None}
-        print(f"Actualizando con datos: {update_data}")
 
         for key, value in update_data.items():
             if hasattr(db_medication, key):
@@ -338,8 +322,6 @@ def update_medication(
         db.add(db_medication)
         db.commit()
         db.refresh(db_medication)
-
-        print(f"Medicamento actualizado exitosamente: {db_medication}")
 
         return {
             "status": "success",

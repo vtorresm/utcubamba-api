@@ -3,8 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from src.api.v1.router import api_router
 from src.core.database import engine, create_db_and_tables
+from src.core.limiter import limiter
 from src.core.logging import setup_logging
 import logging
 
@@ -77,6 +81,11 @@ app = FastAPI(
     ]
 )
 
+# Rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
@@ -100,10 +109,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Manejador para errores de validación
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.error(f"Error de validación: {str(exc)}")
+    logger.error("Error de validación en %s: %s", request.url.path, str(exc))
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "body": exc.body}
+        content={"detail": exc.errors()}
     )
 
 # Evento de inicio para crear tablas

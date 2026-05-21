@@ -1,13 +1,22 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import hashlib
+import logging
+import uuid
+
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
+
 from src.models.user import User, Role, UserStatus
 from src.models.password_reset_token import PasswordResetToken
-from fastapi import HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-import uuid
 from src.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode()).hexdigest()
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
@@ -157,15 +166,12 @@ class AuthService:
             )
         except Exception as e:
             db.rollback()
-            # Log del error para depuración
-            import traceback
-            print(f"Error al crear usuario: {str(e)}")
-            print(traceback.format_exc())
+            logger.error("Error al crear usuario: %s", str(e), exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={
                     "error": "user_creation_failed",
-                    "message": f"Error al crear el usuario: {str(e)}"
+                    "message": "Error interno al crear el usuario",
                 }
             )
 
@@ -188,13 +194,13 @@ class AuthService:
             if not user:
                 return None
                 
-            # Generar un token único
-            token = str(uuid.uuid4())
-            
+            # Generate a raw token for the email, store only its hash
+            raw_token = str(uuid.uuid4())
+
             # Crear token de restablecimiento
             reset_token = PasswordResetToken(
                 user_id=user.id,
-                token=token,
+                token=_hash_token(raw_token),
                 expires_at=datetime.utcnow() + timedelta(hours=1)
             )
             
@@ -206,13 +212,12 @@ class AuthService:
             # Guardar nuevo token
             db.add(reset_token)
             db.commit()
-            
-            return token
+
+            return raw_token
             
         except Exception as e:
             db.rollback()
-            import logging
-            logging.error(f"Error al generar token de restablecimiento: {str(e)}", exc_info=True)
+            logger.error("Error al generar token de restablecimiento: %s", str(e), exc_info=True)
             return None
 
     @staticmethod
@@ -221,7 +226,7 @@ class AuthService:
         Restablece la contraseña usando un token.
         """
         reset_token = db.query(PasswordResetToken).filter(
-            PasswordResetToken.token == token
+            PasswordResetToken.token == _hash_token(token)
         ).with_for_update().first()
         if not reset_token:
             raise HTTPException(

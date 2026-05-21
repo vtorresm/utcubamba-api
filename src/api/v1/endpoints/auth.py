@@ -1,15 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from pydantic import BaseModel, EmailStr, Field, validator
 from sqlalchemy.orm import Session
-from src.core.database import get_db
-from src.services.auth_service import AuthService
-from src.models.user import Role, User, UserStatus
+from typing import Optional, Dict, Any
 from datetime import timedelta, datetime
 import logging
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, Dict, Any
+
 from fastapi.responses import JSONResponse, Response
 from src.core.config import settings
+from src.core.database import get_db
+from src.core.limiter import limiter
+from src.services.auth_service import AuthService
+from src.models.user import Role, User, UserStatus
 
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
@@ -92,12 +93,15 @@ class ResetPasswordConfirm(BaseModel):
     responses={
         200: {"description": "Inicio de sesión exitoso"},
         401: {"description": "Credenciales inválidas"},
-        422: {"description": "Error de validación"}
-    }
+        429: {"description": "Demasiados intentos, intenta más tarde"},
+        422: {"description": "Error de validación"},
+    },
 )
+@limiter.limit("10/minute")
 async def login(
-    request: LoginRequest,
-    db: Session = Depends(get_db)
+    request: Request,
+    body: LoginRequest,
+    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
     Inicia sesión y devuelve un token JWT.
@@ -108,16 +112,15 @@ async def login(
     try:
         logger.info("[AUTH] Intento de inicio de sesión")
 
-        # Verificar el usuario
-        user = AuthService.verify_user(db, request.username, request.password)
+        user = AuthService.verify_user(db, body.username, body.password)
         if not user:
             logger.warning("[AUTH] Credenciales incorrectas para el usuario proporcionado")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": "invalid_credentials", "message": "Credenciales incorrectas"}
+                detail={"error": "invalid_credentials", "message": "Credenciales incorrectas"},
             )
 
-        logger.info(f"[AUTH] Usuario autenticado con rol: {user.role}")
+        logger.info("[AUTH] Usuario autenticado con rol: %s", user.role)
 
         # Crear token de acceso
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -161,12 +164,15 @@ async def login(
         201: {"description": "Usuario registrado exitosamente"},
         400: {"description": "Error en la solicitud"},
         422: {"description": "Error de validación"},
-        500: {"description": "Error interno del servidor"}
-    }
+        429: {"description": "Demasiados intentos, intenta más tarde"},
+        500: {"description": "Error interno del servidor"},
+    },
 )
+@limiter.limit("5/minute")
 async def register(
-    request: RegisterRequest,
-    db: Session = Depends(get_db)
+    request: Request,
+    body: RegisterRequest,
+    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
     Registra un nuevo usuario en el sistema con toda su información personal y laboral.
@@ -180,16 +186,15 @@ async def register(
     - **role**: Rol del usuario en el sistema (opcional, por defecto 'user')
     """
     try:
-        # Registrar el nuevo usuario con todos los campos requeridos
         user = AuthService.register_user(
             db=db,
-            email=request.email,
-            password=request.password,
-            nombre=request.nombre,
-            cargo=request.cargo,
-            departamento=request.departamento,
-            contacto=request.contacto,
-            role=request.role
+            email=body.email,
+            password=body.password,
+            nombre=body.nombre,
+            cargo=body.cargo,
+            departamento=body.departamento,
+            contacto=body.contacto,
+            role=body.role,
         )
 
         # Generar token para auto-login tras el registro
@@ -274,8 +279,7 @@ async def request_password_reset(
             "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
         }
     except Exception as e:
-        import logging
-        logging.error(f"Error en password-reset: {str(e)}", exc_info=True)
+        logger.error("Error en password-reset: %s", str(e), exc_info=True)
         return {
             "message": "Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña"
         }
