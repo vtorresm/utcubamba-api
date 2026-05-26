@@ -1,147 +1,123 @@
 # Utcubamba API
 
-API para la gestión de usuarios, medicamentos y predicción de desabastecimientos en el sistema de farmacia de la UTC.
+API REST para la gestión de usuarios, medicamentos y predicción de desabastecimientos en el sistema de farmacia de la red de salud Utcubamba.
 
-## Características Principales
+## Tecnologías
 
-- 🔐 Autenticación JWT
-- 👥 Gestión de usuarios con roles
-- 💊 Gestión de inventario de medicamentos
-- 📊 Predicción de desabastecimientos usando Random Forest
-- 📚 Documentación completa de la API
+- **Python 3.12+**
+- **FastAPI** — framework web
+- **SQLModel** — ORM sobre SQLAlchemy
+- **PostgreSQL** — base de datos
+- **Alembic** — migraciones
+- **JWT** — autenticación
+- **Scikit-learn** — modelo de predicción (Random Forest)
+- **Uvicorn** — servidor ASGI
 
-## Documentación de la API
+## Características
 
-### Documentación Técnica
+- Autenticación y autorización con JWT
+- Gestión de usuarios con roles
+- Gestión de inventario de medicamentos y categorías
+- Predicción de desabastecimientos con Random Forest
+- Documentación interactiva con Swagger y ReDoc
+- Rate limiting
+- CORS configurado para el frontend
 
-- [Autenticación](./docs/api/AUTHENTICATION.md) - Gestión de usuarios y autenticación
-- [Usuarios](./docs/api/USERS.md) - Gestión de perfiles de usuario
-- [Medicamentos](./docs/api/MEDICATIONS.md) - Gestión del inventario de medicamentos
-- [Predicciones](./docs/api/PREDICTIONS.md) - Predicción y análisis de desabastecimientos
-
-### Documentación Interactiva
-
-Después de iniciar el servidor, accede a:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-## Configuración Rápida
-
-1. **Clonar el repositorio**
-   ```bash
-   git clone https://github.com/tu-usuario/utcubamba-api.git
-   cd utcubamba-api
-   ```
-
-2. **Configurar entorno virtual**
-   ```bash
-   # Windows
-   python -m venv venv
-   .\venv\Scripts\activate
-   
-   # Linux/Mac
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. **Instalar dependencias**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configurar variables de entorno**
-   ```bash
-   cp .env.example .env
-   # Editar .env con tus configuraciones
-   ```
-
-5. **Inicializar la base de datos**
-   ```bash
-   python scripts/seed_db.py
-   ```
-
-6. **Iniciar el servidor de desarrollo**
-   ```bash
-   uvicorn src.main:app --reload
-   ```
-
-## Estructura del Proyecto
+## Estructura del proyecto
 
 ```
 utcubamba-api/
 ├── src/
-│   ├── api/
-│   │   └── v1/
-│   │       ├── endpoints/
-│   │       │   ├── auth.py       # Autenticación
-│   │       │   ├── users.py      # Gestión de usuarios
-│   │       │   ├── medications.py # Gestión de medicamentos
-│   │       │   └── predictions.py # Predicciones
-│   │       └── __init__.py
-│   ├── core/                     # Configuraciones centrales
-│   ├── models/                   # Modelos de base de datos
-│   └── services/                 # Lógica de negocio
-├── scripts/                      # Scripts de utilidad
-├── tests/                        # Pruebas unitarias
-├── .env.example                  # Ejemplo de variables de entorno
-├── requirements.txt              # Dependencias
-└── README.md                     # Este archivo
+│   ├── api/v1/
+│   │   └── endpoints/
+│   │       ├── auth.py               # Login y registro
+│   │       ├── users.py              # Gestión de usuarios
+│   │       ├── medications.py        # Inventario de medicamentos
+│   │       ├── categories.py         # Categorías de medicamentos
+│   │       ├── predictions.py        # Predicciones de desabastecimiento
+│   │       └── prediction_metrics.py # Métricas del modelo
+│   ├── core/                         # Configuración, DB, seguridad
+│   ├── models/                       # Modelos de base de datos
+│   ├── schemas/                      # Esquemas Pydantic
+│   ├── services/                     # Lógica de negocio
+│   └── main.py                       # Punto de entrada
+├── alembic/                          # Migraciones de base de datos
+├── scripts/
+│   ├── seed_db.py                    # Carga de datos de prueba
+│   └── reset_db.py                   # Reseteo de base de datos
+├── tests/                            # Pruebas
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
+└── requirements.txt
 ```
 
-## Variables de Entorno
+## Variables de entorno
 
-Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
+Copia `.env.example` a `.env` y completa los valores:
 
-```
-# Configuración de la base de datos
-DATABASE_URL=sqlite:///./utcubamba.db
-
-# Configuración de autenticación
-SECRET_KEY=tu_clave_secreta_muy_segura
-ALGORITHM=HS256
+```env
+DATABASE_URL=postgresql://usuario:password@localhost:5432/utcubamba_db
+SECRET_KEY=clave-secreta-muy-larga-y-segura
+ENVIRONMENT=development
 ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Configuración de correo (opcional)
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-EMAIL_USER=tu_correo@utcubamba.edu.pe
-EMAIL_PASSWORD=tu_contraseña
+FRONTEND_URL=http://localhost:9002
+CORS_ORIGINS=http://localhost:9002,http://127.0.0.1:9002
 ```
 
-## Ejecutando las Pruebas
+## Cómo levantar el proyecto
 
-```bash
+### Opción 1 — Local (con Python y PostgreSQL instalados)
+
+```powershell
+# 1. Crear y activar entorno virtual
+python -m venv venv
+.\venv\Scripts\Activate.ps1   # Windows
+# source venv/bin/activate    # Linux/Mac
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. Configurar variables de entorno
+Copy-Item .env.example .env
+# Editar .env con tus datos
+
+# 4. Ejecutar migraciones
+alembic upgrade head
+
+# 5. (Opcional) Cargar datos de prueba
+python scripts/seed_db.py
+
+# 6. Levantar el servidor
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Opción 2 — Docker (solo backend + base de datos)
+
+```powershell
+docker compose up --build
+```
+
+Esto levanta automáticamente PostgreSQL y el backend con las migraciones aplicadas.
+
+> Para levantar el stack completo (backend + frontend), usa el `docker-compose.yml` de la carpeta raíz si tienes ambos repositorios clonados juntos.
+
+## Documentación de la API
+
+Con el servidor corriendo, accede a:
+
+| Interfaz | URL |
+|---|---|
+| Swagger UI | http://localhost:8000/api/docs |
+| ReDoc | http://localhost:8000/api/redoc |
+| OpenAPI JSON | http://localhost:8000/api/openapi.json |
+
+## Ejecutar pruebas
+
+```powershell
 pytest tests/
 ```
 
-## Despliegue
+## Proyecto relacionado
 
-### Requisitos
-- Python 3.8+
-- Base de datos PostgreSQL
-- Servidor web (Nginx, Apache, etc.)
-
-### Pasos
-1. Configurar variables de entorno de producción
-2. Instalar dependencias: `pip install -r requirements.txt`
-3. Ejecutar migraciones
-4. Configurar servidor web
-5. Iniciar la aplicación con un servidor ASGI como uvicorn o gunicorn
-
-## Contribución
-
-1. Haz un fork del repositorio
-2. Crea una rama para tu característica (`git checkout -b feature/nueva-caracteristica`)
-3. Haz commit de tus cambios (`git commit -am 'Añadir nueva característica'`)
-4. Haz push a la rama (`git push origin feature/nueva-caracteristica`)
-5. Abre un Pull Request
-
-## Licencia
-
-Este proyecto está bajo la Licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más información.
-
-## Contacto
-
-Para soporte o consultas, contacta al equipo de desarrollo en:
-- Email: desarrollo@utcubamba.edu.pe
-- Sitio web: [www.utcubamba.edu.pe](https://www.utcubamba.edu.pe)
+- **Frontend:** [Utcubamba-project](https://github.com/vtorresm/Utcubamba-project) — interfaz en Next.js que consume esta API
