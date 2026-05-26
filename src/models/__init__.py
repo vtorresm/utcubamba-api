@@ -27,6 +27,19 @@ from .prediction import (
 )
 from .medication_condition import MedicationConditionLink
 
+# Import new models
+from .notification import (
+    Notification, NotificationCreate, NotificationUpdate, NotificationInDB,
+    NotificationType, NotificationLevel
+)
+from .order import (
+    Order, OrderCreate, OrderUpdate, OrderInDB, OrderStatus
+)
+from .report import (
+    Report, ReportCreate, ReportUpdate, ReportInDB,
+    ReportType, ReportFormat, ReportStatus
+)
+
 # Re-export all models
 __all__ = [
     # Base
@@ -45,5 +58,16 @@ __all__ = [
     'Movement', 'MovementCreate', 'MovementUpdate', 'MovementInDB', 'MovementType',
     'Prediction', 'PredictionCreate', 'PredictionUpdate', 'PredictionInDB', 'PredictionResponse',
     'PredictionMetrics', 'PredictionMetricsCreate', 'PredictionMetricsUpdate', 'PredictionMetricsResponse',
-    'MedicationConditionLink'
+    'MedicationConditionLink',
+
+    # Notifications
+    'Notification', 'NotificationCreate', 'NotificationUpdate', 'NotificationInDB',
+    'NotificationType', 'NotificationLevel',
+
+    # Orders
+    'Order', 'OrderCreate', 'OrderUpdate', 'OrderInDB', 'OrderStatus',
+
+    # Reports
+    'Report', 'ReportCreate', 'ReportUpdate', 'ReportInDB',
+    'ReportType', 'ReportFormat', 'ReportStatus',
 ]

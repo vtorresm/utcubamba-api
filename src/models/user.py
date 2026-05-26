@@ -1,8 +1,13 @@
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 from passlib.context import CryptContext
 from .base import BaseModel, Role, UserStatus
+
+if TYPE_CHECKING:
+    from .notification import Notification
+    from .order import Order
+    from .report import Report
 
 # Contexto para encriptar contraseñas
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -31,6 +36,15 @@ class User(UserBase, BaseModel, table=True):
     
     # Relación con tokens de restablecimiento de contraseña
     password_reset_tokens: List["PasswordResetToken"] = Relationship(back_populates="user")
+
+    # Relación con notificaciones
+    notifications: List["Notification"] = Relationship(back_populates="user")
+
+    # Relación con órdenes creadas
+    orders: List["Order"] = Relationship(back_populates="creator")
+
+    # Relación con reportes generados
+    reports: List["Report"] = Relationship(back_populates="generator")
     
     # Métodos para el manejo de contraseñas
     @staticmethod

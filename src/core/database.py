@@ -2,6 +2,7 @@ import logging
 from typing import Generator
 
 from sqlmodel import SQLModel, Session, create_engine
+from sqlalchemy.orm import sessionmaker
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ def _get_engine():
 
 
 engine = _get_engine()
+SessionLocal = sessionmaker(bind=engine, class_=Session)
 
 
 def _import_models():
@@ -30,6 +32,9 @@ def _import_models():
     from src.models.movement import Movement, MovementCreate, MovementUpdate, MovementInDB
     from src.models.prediction import Prediction, PredictionCreate, PredictionUpdate, PredictionInDB
     from src.models.medication_condition import MedicationConditionLink
+    from src.models.notification import Notification, NotificationCreate, NotificationUpdate, NotificationInDB
+    from src.models.order import Order, OrderCreate, OrderUpdate, OrderInDB
+    from src.models.report import Report, ReportCreate, ReportUpdate, ReportInDB
     logger.debug("All models imported successfully")
 
 

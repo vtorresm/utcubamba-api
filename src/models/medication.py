@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .movement import Movement
     from .prediction import Prediction
     from .medication_condition import MedicationConditionLink
+    from .order import Order
 
 class MedicationBase(SQLModel):
     """Base model for Medication with common attributes."""
@@ -63,6 +64,9 @@ class Medication(MedicationBase, BaseModel, table=True):
         back_populates="medication",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+
+    # One-to-many relationship with Order
+    orders: List["Order"] = Relationship(back_populates="medication")
 
 class MedicationCreate(MedicationBase):
     """Model for creating a new medication."""

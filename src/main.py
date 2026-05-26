@@ -75,6 +75,18 @@ app = FastAPI(
         {
             "name": "categories",
             "description": "Categorías de medicamentos"
+        },
+        {
+            "name": "notifications",
+            "description": "Notificaciones y alertas del sistema"
+        },
+        {
+            "name": "orders",
+            "description": "Órdenes de pedido y reabastecimiento"
+        },
+        {
+            "name": "reports",
+            "description": "Reportes generados del sistema"
         }
     ]
 )
