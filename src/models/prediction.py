@@ -152,11 +152,6 @@ class Prediction(PredictionBase, table=True):
     movement: Optional["Movement"] = Relationship(back_populates="prediction")
     
     # Relación con PredictionMetrics
-    prediction_metrics_id: Optional[int] = Field(
-        default=None, 
-        foreign_key="prediction_metrics.id",
-        description="ID de las métricas del modelo que generó esta predicción"
-    )
     metrics: Optional["PredictionMetrics"] = Relationship(back_populates="predictions")
 
 class PredictionCreate(PredictionBase):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 import logging
@@ -57,15 +57,9 @@ def mark_as_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    notification = notification_service.mark_as_read(
+    return notification_service.mark_as_read(
         db=db, notification_id=notification_id, user_id=current_user.id
     )
-    if not notification:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notificación no encontrada"
-        )
-    return notification
 
 
 @router.put(
@@ -92,12 +86,7 @@ def delete_notification(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deleted = notification_service.delete_notification(
+    notification_service.delete_notification(
         db=db, notification_id=notification_id, user_id=current_user.id
     )
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notificación no encontrada"
-        )
     return None

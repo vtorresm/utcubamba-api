@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Request, Response
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -11,20 +11,23 @@ from src.core.database import engine, create_db_and_tables
 from src.core.limiter import limiter
 from src.core.logging import setup_logging
 from src.core.config import settings
+from src.exceptions import (
+    DomainError, NotFoundError, ForbiddenError, ValidationError
+)
 import logging
 
-# Configurar logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Configuración de CORS - Solo permitir el origen del frontend
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 
-# Lista de métodos HTTP permitidos
-allow_methods = ["*"]
 
-# Lista de encabezados permitidos
-# Crear la aplicación FastAPI con metadatos mejorados
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    yield
+
+
 app = FastAPI(
     title="Utcubamba API",
     version="1.0.0",
@@ -42,7 +45,7 @@ app = FastAPI(
     """,
     contact={
         "name": "Soporte Técnico",
-        "email": "soporte@utcubamba.com"
+        "email": settings.CONTACT_EMAIL,
     },
     license_info={
         "name": "MIT",
@@ -51,6 +54,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
     openapi_tags=[
         {
             "name": "auth",
@@ -91,12 +95,10 @@ app = FastAPI(
     ]
 )
 
-# Rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -104,10 +106,26 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
     expose_headers=["Content-Disposition"],
-    max_age=600  # Cache preflight requests for 10 minutes
+    max_age=600
 )
 
-# Manejador de excepciones global
+
+@app.exception_handler(DomainError)
+async def domain_exception_handler(request: Request, exc: DomainError):
+    if isinstance(exc, NotFoundError):
+        status_code = 404
+    elif isinstance(exc, ForbiddenError):
+        status_code = 403
+    elif isinstance(exc, ValidationError):
+        status_code = 400
+    else:
+        status_code = 500
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": str(exc)}
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Error no manejado: {str(exc)}", exc_info=True)
@@ -116,7 +134,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal server error"}
     )
 
-# Manejador para errores de validación
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.error("Error de validación en %s: %s", request.url.path, str(exc))
@@ -125,15 +143,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": exc.errors()}
     )
 
-# Evento de inicio para crear tablas
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
 
-# Registrar rutas
 app.include_router(api_router, prefix="/api/v1")
+
 
 @app.get("/")
 def read_root():
     return {"message": "Utcubamba API is running"}
-

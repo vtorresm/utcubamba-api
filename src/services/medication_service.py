@@ -1,6 +1,5 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session, joinedload
-from fastapi import HTTPException, status
 import logging
 
 from src.models.medication import Medication, MedicationCreate, MedicationUpdate
@@ -8,6 +7,10 @@ from src.models.category import Category
 from src.models.intake_type import IntakeType
 from src.models.condition import Condition
 from src.models.medication_condition import MedicationConditionLink
+from src.exceptions import (
+    CategoryNotFoundError, IntakeTypeNotFoundError,
+    ConditionNotFoundError, MedicationNotFoundError
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +23,10 @@ def get_medications(
     category_id: Optional[int] = None,
     intake_type_id: Optional[int] = None
 ) -> List[Medication]:
-    query = db.query(Medication).options(
-        joinedload(Medication.category),
-        joinedload(Medication.intake_type)
-    )
+    query = db.query(Medication)
     if name:
-        query = query.filter(Medication.name.ilike(f'%{name}%'))
+        escaped = name.replace('%', '\\%').replace('_', '\\_')
+        query = query.filter(Medication.name.ilike(f'%{escaped}%'))
     if category_id is not None:
         query = query.filter(Medication.category_id == category_id)
     if intake_type_id is not None:
@@ -41,17 +42,11 @@ def create_medication(db: Session, medication_data: MedicationCreate) -> Medicat
     if medication_data.category_id is not None:
         category = db.get(Category, medication_data.category_id)
         if not category:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Category with id {medication_data.category_id} not found"
-            )
+            raise CategoryNotFoundError(medication_data.category_id)
     if medication_data.intake_type_id is not None:
         intake_type = db.get(IntakeType, medication_data.intake_type_id)
         if not intake_type:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Intake type with id {medication_data.intake_type_id} not found"
-            )
+            raise IntakeTypeNotFoundError(medication_data.intake_type_id)
 
     medication_data_dict = medication_data.model_dump(exclude={"condition_ids"})
     db_medication = Medication(**medication_data_dict)
@@ -59,21 +54,26 @@ def create_medication(db: Session, medication_data: MedicationCreate) -> Medicat
     if medication_data.condition_ids:
         for condition_id in medication_data.condition_ids:
             condition = db.get(Condition, condition_id)
-            if condition:
-                db_medication.condition_links.append(
-                    MedicationConditionLink(condition=condition)
-                )
+            if not condition:
+                raise ConditionNotFoundError(condition_id)
+            db_medication.condition_links.append(
+                MedicationConditionLink(condition=condition)
+            )
 
     db.add(db_medication)
-    db.commit()
-    db.refresh(db_medication)
+    try:
+        db.commit()
+        db.refresh(db_medication)
+    except Exception:
+        db.rollback()
+        raise
     return db_medication
 
 
-def update_medication(db: Session, medication_id: int, update_data: MedicationUpdate) -> Optional[Medication]:
+def update_medication(db: Session, medication_id: int, update_data: MedicationUpdate) -> Medication:
     db_medication = db.get(Medication, medication_id)
     if not db_medication:
-        return None
+        raise MedicationNotFoundError(medication_id)
 
     update_dict = update_data.model_dump(exclude_unset=True, exclude={"condition_ids"})
     for key, value in update_dict.items():
@@ -84,23 +84,31 @@ def update_medication(db: Session, medication_id: int, update_data: MedicationUp
         db_medication.condition_links.clear()
         for condition_id in update_data.condition_ids:
             condition = db.get(Condition, condition_id)
-            if condition:
-                db_medication.condition_links.append(
-                    MedicationConditionLink(condition=condition)
-                )
+            if not condition:
+                raise ConditionNotFoundError(condition_id)
+            db_medication.condition_links.append(
+                MedicationConditionLink(condition=condition)
+            )
 
-    db.commit()
-    db.refresh(db_medication)
+    try:
+        db.commit()
+        db.refresh(db_medication)
+    except Exception:
+        db.rollback()
+        raise
     return db_medication
 
 
-def delete_medication(db: Session, medication_id: int) -> bool:
+def delete_medication(db: Session, medication_id: int) -> None:
     db_medication = db.get(Medication, medication_id)
     if not db_medication:
-        return False
+        raise MedicationNotFoundError(medication_id)
     db.delete(db_medication)
-    db.commit()
-    return True
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def get_medications_count(db: Session) -> int:

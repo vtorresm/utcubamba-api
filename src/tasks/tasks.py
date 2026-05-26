@@ -14,11 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def _get_db() -> Session:
-    db = SessionLocal()
     try:
+        db = SessionLocal()
         return db
     except Exception:
-        db.close()
         raise
 
 

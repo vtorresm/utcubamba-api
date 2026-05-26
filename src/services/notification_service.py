@@ -6,6 +6,7 @@ import logging
 from src.models.notification import (
     Notification, NotificationCreate, NotificationType, NotificationLevel
 )
+from src.exceptions import NotificationNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,12 @@ def create_notification(
         metadata_=metadata_ or {}
     )
     db.add(notification)
-    db.commit()
-    db.refresh(notification)
+    try:
+        db.commit()
+        db.refresh(notification)
+    except Exception:
+        db.rollback()
+        raise
     return notification
 
 
@@ -57,16 +62,20 @@ def get_unread_count(db: Session, user_id: int) -> int:
     ).count()
 
 
-def mark_as_read(db: Session, notification_id: int, user_id: int) -> Optional[Notification]:
+def mark_as_read(db: Session, notification_id: int, user_id: int) -> Notification:
     notification = db.query(Notification).filter(
         Notification.id == notification_id,
         Notification.user_id == user_id
     ).first()
     if not notification:
-        return None
+        raise NotificationNotFoundError(notification_id)
     notification.read = True
-    db.commit()
-    db.refresh(notification)
+    try:
+        db.commit()
+        db.refresh(notification)
+    except Exception:
+        db.rollback()
+        raise
     return notification
 
 
@@ -74,21 +83,28 @@ def mark_all_as_read(db: Session, user_id: int) -> int:
     count = db.query(Notification).filter(
         Notification.user_id == user_id,
         Notification.read == False
-    ).update({"read": True})
-    db.commit()
+    ).update({"read": True}, synchronize_session='fetch')
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return count
 
 
-def delete_notification(db: Session, notification_id: int, user_id: int) -> bool:
+def delete_notification(db: Session, notification_id: int, user_id: int) -> None:
     notification = db.query(Notification).filter(
         Notification.id == notification_id,
         Notification.user_id == user_id
     ).first()
     if not notification:
-        return False
+        raise NotificationNotFoundError(notification_id)
     db.delete(notification)
-    db.commit()
-    return True
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def create_shortage_alert(

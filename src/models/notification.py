@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
-from sqlmodel import SQLModel, Field, Relationship, Column, JSON
+from sqlmodel import SQLModel, Field, Relationship, Column, JSON, Index
 
 if TYPE_CHECKING:
     from .user import User
@@ -38,6 +38,10 @@ class Notification(NotificationBase, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
     user: "User" = Relationship(back_populates="notifications")
+
+    __table_args__ = (
+        Index("ix_notifications_user_read_created", "user_id", "read", "created_at"),
+    )
 
 class NotificationCreate(SQLModel):
     title: str

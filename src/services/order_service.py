@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
 import logging
 
 from src.models.order import Order, OrderCreate, OrderUpdate, OrderStatus
 from src.models.medication import Medication
 from src.models.user import User
+from src.exceptions import MedicationNotFoundError, OrderNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +18,7 @@ def create_order(
 ) -> Order:
     medication = db.get(Medication, order_data.medication_id)
     if not medication:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Medicamento con ID {order_data.medication_id} no encontrado"
-        )
+        raise MedicationNotFoundError(order_data.medication_id)
 
     order = Order(
         medication_id=order_data.medication_id,
@@ -34,8 +31,12 @@ def create_order(
         order_date=datetime.utcnow()
     )
     db.add(order)
-    db.commit()
-    db.refresh(order)
+    try:
+        db.commit()
+        db.refresh(order)
+    except Exception:
+        db.rollback()
+        raise
     return order
 
 
@@ -74,10 +75,10 @@ def update_order_status(
     order_id: int,
     new_status: OrderStatus,
     received_date: Optional[datetime] = None
-) -> Optional[Order]:
+) -> Order:
     order = db.get(Order, order_id)
     if not order:
-        return None
+        raise OrderNotFoundError(order_id)
 
     order.status = new_status
     if received_date:
@@ -90,8 +91,12 @@ def update_order_status(
         if medication:
             medication.stock += order.quantity
 
-    db.commit()
-    db.refresh(order)
+    try:
+        db.commit()
+        db.refresh(order)
+    except Exception:
+        db.rollback()
+        raise
     return order
 
 
@@ -99,24 +104,31 @@ def update_order(
     db: Session,
     order_id: int,
     update_data: OrderUpdate
-) -> Optional[Order]:
+) -> Order:
     order = db.get(Order, order_id)
     if not order:
-        return None
+        raise OrderNotFoundError(order_id)
 
     update_dict = update_data.model_dump(exclude_unset=True)
     for key, value in update_dict.items():
         setattr(order, key, value)
     order.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(order)
+    try:
+        db.commit()
+        db.refresh(order)
+    except Exception:
+        db.rollback()
+        raise
     return order
 
 
-def delete_order(db: Session, order_id: int) -> bool:
+def delete_order(db: Session, order_id: int) -> None:
     order = db.get(Order, order_id)
     if not order:
-        return False
+        raise OrderNotFoundError(order_id)
     db.delete(order)
-    db.commit()
-    return True
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

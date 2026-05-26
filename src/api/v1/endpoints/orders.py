@@ -92,13 +92,7 @@ def update_order(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para modificar órdenes"
         )
-    order = order_service.update_order(db=db, order_id=order_id, update_data=update_data)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Orden con ID {order_id} no encontrada"
-        )
-    return order
+    return order_service.update_order(db=db, order_id=order_id, update_data=update_data)
 
 
 @router.put(
@@ -118,17 +112,11 @@ def update_order_status(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para modificar órdenes"
         )
-    order = order_service.update_order_status(
+    return order_service.update_order_status(
         db=db, order_id=order_id,
         new_status=status_update.status,
         received_date=status_update.received_date
     )
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Orden con ID {order_id} no encontrada"
-        )
-    return order
 
 
 @router.delete(
@@ -147,12 +135,7 @@ def delete_order(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para eliminar órdenes"
         )
-    deleted = order_service.delete_order(db=db, order_id=order_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Orden con ID {order_id} no encontrada"
-        )
+    order_service.delete_order(db=db, order_id=order_id)
     return None
 
 

@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from sqlalchemy import func
 import logging
 
 from src.models.report import (
-    Report, ReportCreate, ReportUpdate, ReportStatus, ReportType
+    Report, ReportCreate, ReportStatus, ReportType
 )
 from src.models.user import User
+from src.exceptions import ReportNotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,12 @@ def generate_report(
         generated_at=datetime.utcnow()
     )
     db.add(report)
-    db.commit()
-    db.refresh(report)
+    try:
+        db.commit()
+        db.refresh(report)
+    except Exception:
+        db.rollback()
+        raise
 
     try:
         data = _build_report_data(db, report.type, report.parameters or {})
@@ -68,7 +73,6 @@ def _build_report_data(db: Session, report_type: ReportType, parameters: dict) -
         }
 
     elif report_type == ReportType.MOVEMENTS:
-        from sqlalchemy import func
         movements = db.query(
             Movement.type,
             func.count(Movement.id).label("count"),
@@ -83,19 +87,34 @@ def _build_report_data(db: Session, report_type: ReportType, parameters: dict) -
         }
 
     elif report_type == ReportType.TRENDS:
-        medications = db.query(Medication).all()
-        trends = []
-        for med in medications:
-            predictions = db.query(Prediction).filter(
-                Prediction.medication_id == med.id
-            ).order_by(Prediction.date.desc()).limit(12).all()
-            if predictions:
-                trends.append({
-                    "medication_id": med.id,
-                    "medication_name": med.name,
-                    "avg_predicted_usage": sum(p.predicted_usage for p in predictions) / len(predictions),
-                    "trend": predictions[0].trend if predictions[0].trend else "stable"
-                })
+        from sqlalchemy import text
+        stmt = text("""
+            SELECT
+                p.medication_id,
+                m.name AS medication_name,
+                AVG(p.predicted_usage) AS avg_predicted_usage,
+                p.trend
+            FROM predictions p
+            JOIN medications m ON m.id = p.medication_id
+            WHERE p.id IN (
+                SELECT id FROM (
+                    SELECT id, medication_id,
+                        ROW_NUMBER() OVER (PARTITION BY medication_id ORDER BY date DESC) AS rn
+                    FROM predictions
+                ) sub WHERE rn <= 12
+            )
+            GROUP BY p.medication_id, m.name, p.trend
+        """)
+        rows = db.execute(stmt).fetchall()
+        trends = [
+            {
+                "medication_id": row.medication_id,
+                "medication_name": row.medication_name,
+                "avg_predicted_usage": float(row.avg_predicted_usage),
+                "trend": row.trend or "stable"
+            }
+            for row in rows
+        ]
         return {"trends": trends}
 
     elif report_type == ReportType.ALERTS:
@@ -117,13 +136,13 @@ def _build_report_data(db: Session, report_type: ReportType, parameters: dict) -
 
     elif report_type == ReportType.FINANCIAL:
         from src.models.order import Order
-        orders = db.query(Order).filter(
-            Order.status == "received"
-        ).all()
-        total_cost = sum(o.total_cost for o in orders)
+        result = db.query(
+            func.count(Order.id).label("total_orders"),
+            func.sum(Order.total_cost).label("total_cost")
+        ).filter(Order.status == "received").first()
         return {
-            "total_orders": len(orders),
-            "total_cost": float(total_cost),
+            "total_orders": result.total_orders or 0,
+            "total_cost": float(result.total_cost or 0),
             "period": parameters.get("period", "all")
         }
 
@@ -133,7 +152,7 @@ def _build_report_data(db: Session, report_type: ReportType, parameters: dict) -
             "period": parameters.get("period", "all")
         }
 
-    return {"message": "Tipo de reporte no implementado"}
+    raise ValidationError(f"Tipo de reporte no implementado: {report_type}")
 
 
 def get_reports(
@@ -151,14 +170,20 @@ def get_reports(
     return query.order_by(Report.created_at.desc()).offset(skip).limit(limit).all()
 
 
-def get_report_by_id(db: Session, report_id: int) -> Optional[Report]:
-    return db.get(Report, report_id)
-
-
-def delete_report(db: Session, report_id: int) -> bool:
+def get_report_by_id(db: Session, report_id: int) -> Report:
     report = db.get(Report, report_id)
     if not report:
-        return False
+        raise ReportNotFoundError(report_id)
+    return report
+
+
+def delete_report(db: Session, report_id: int) -> None:
+    report = db.get(Report, report_id)
+    if not report:
+        raise ReportNotFoundError(report_id)
     db.delete(report)
-    db.commit()
-    return True
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

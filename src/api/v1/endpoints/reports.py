@@ -49,11 +49,6 @@ def get_report(
     current_user: User = Depends(get_current_user),
 ):
     report = report_service.get_report_by_id(db=db, report_id=report_id)
-    if not report:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reporte con ID {report_id} no encontrado"
-        )
     if current_user.role != Role.ADMIN and report.generated_by != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -89,11 +84,6 @@ def delete_report(
     current_user: User = Depends(get_current_user),
 ):
     report = report_service.get_report_by_id(db=db, report_id=report_id)
-    if not report:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reporte con ID {report_id} no encontrado"
-        )
     if current_user.role != Role.ADMIN and report.generated_by != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

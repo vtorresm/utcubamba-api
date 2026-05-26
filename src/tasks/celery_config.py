@@ -1,10 +1,12 @@
 from celery import Celery
 from src.core.config import settings
 
+REDIS_URL = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+
 celery_app = Celery(
     "utcubamba",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/0",
+    broker=REDIS_URL,
+    backend=REDIS_URL,
     include=["src.tasks.tasks"]
 )
 

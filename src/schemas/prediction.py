@@ -9,7 +9,7 @@ class PredictionBase(BaseModel):
     real_usage: float = 0.0
     predicted_usage: float = 0.0
     stock: float = 0.0
-    month_of_year: int = Field(default=datetime.utcnow().month, ge=1, le=12)
+    month_of_year: int = Field(default_factory=lambda: datetime.utcnow().month, ge=1, le=12)
     regional_demand: float = 0.0
     shortage: bool = False
     probability: Optional[float] = None
