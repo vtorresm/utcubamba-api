@@ -30,6 +30,9 @@ from src.models.movement import Movement
 from src.models.prediction import Prediction, PredictionMetrics
 from src.models.medication_condition import MedicationConditionLink
 from src.models.password_reset_token import PasswordResetToken
+from src.models.notification import Notification, NotificationType, NotificationLevel
+from src.models.order import Order, OrderStatus
+from src.models.report import Report, ReportType, ReportFormat, ReportStatus
 
 # Create a shared in-memory SQLite engine for tests (StaticPool = one DB shared by all connections)
 TEST_ENGINE = create_engine(
