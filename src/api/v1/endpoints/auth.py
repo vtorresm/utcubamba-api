@@ -33,8 +33,8 @@ class TokenData(BaseModel):
 
 class RegisterRequest(BaseModel):
     """Modelo para la solicitud de registro de usuario."""
-    nombre: Optional[str] = Field(None, min_length=2, max_length=100, description="Nombre completo del usuario")
     name: Optional[str] = Field(None, min_length=2, max_length=100, description="Alias de nombre (compatibilidad con frontend)")
+    nombre: Optional[str] = Field(None, min_length=2, max_length=100, description="Nombre completo del usuario")
     email: EmailStr = Field(..., description="Email del usuario")
     password: str = Field(..., min_length=6, max_length=100, description="Contraseña con al menos 6 caracteres")
     cargo: Optional[str] = Field(default="", max_length=100, description="Cargo o puesto del usuario")
@@ -53,7 +53,7 @@ class RegisterRequest(BaseModel):
 
     @validator('nombre', pre=True, always=True)
     def set_nombre_from_name(cls, v, values):
-        return v or values.get('name') or ''
+        return v or values.get('name') or None
 
     @validator('role')
     def validate_role(cls, v):
