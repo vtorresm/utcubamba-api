@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlalchemy import JSON
 from passlib.context import CryptContext
 from .base import BaseModel, Role, UserStatus
 
@@ -29,6 +30,12 @@ class UserBase(SQLModel):
     fecha_ingreso: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
     estado: UserStatus = Field(default=UserStatus.ACTIVO, nullable=False)
     role: Role = Field(default=Role.USER, nullable=False)
+    # Permisos adicionales otorgados por el admin, más allá del rol base.
+    # Ejemplo: ["view:predictions", "edit:catalog"]
+    extra_permissions: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True)
+    )
 
 class User(UserBase, BaseModel, table=True):
     """User model for database."""

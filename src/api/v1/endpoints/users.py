@@ -44,9 +44,15 @@ class UserResponse(UserBase):
     estado: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+    extra_permissions: Optional[List[str]] = None
+
     class Config:
         from_attributes = True
+
+
+class PermissionsUpdate(BaseModel):
+    """Payload para actualizar permisos extra de un usuario (solo admin)."""
+    extra_permissions: List[str]
 
 # Get all users endpoint (admin only)
 @router.get("/", response_model=List[UserResponse])
@@ -200,6 +206,43 @@ def update_user(
                 "message": "Error interno al actualizar el usuario"
             }
         )
+
+# Admin: actualizar permisos extra de un usuario
+@router.put("/admin/{user_id}/permissions", response_model=UserResponse)
+def admin_update_permissions(
+    user_id: int,
+    payload: PermissionsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Otorga o revoca permisos extra a un usuario (admin only).
+    Reemplaza la lista completa de extra_permissions del usuario.
+    """
+    if current_user.role != Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "forbidden", "message": "Solo administradores pueden gestionar permisos"},
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "message": f"Usuario {user_id} no encontrado"},
+        )
+
+    user.extra_permissions = payload.extra_permissions
+    user.updated_at = datetime.utcnow()
+
+    try:
+        db.commit()
+        db.refresh(user)
+        return user
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={"error": "update_failed", "message": str(e)})
+
 
 # Admin update any user by ID
 @router.put("/admin/{user_id}", response_model=UserResponse)
