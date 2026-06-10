@@ -31,6 +31,22 @@ class IntakeTypeNotFoundError(NotFoundError):
     def __init__(self, intake_type_id: int):
         super().__init__("Tipo de ingesta", intake_type_id)
 
+class SupplierNotFoundError(NotFoundError):
+    def __init__(self, supplier_id: int):
+        super().__init__("Proveedor", supplier_id)
+
+class LotNotFoundError(NotFoundError):
+    def __init__(self, lot_id: int):
+        super().__init__("Lote", lot_id)
+
+class AuditNotFoundError(NotFoundError):
+    def __init__(self, audit_id: int):
+        super().__init__("Auditoría", audit_id)
+
+class DeliveryNotFoundError(NotFoundError):
+    def __init__(self, delivery_id: int):
+        super().__init__("Entrega", delivery_id)
+
 class ConditionNotFoundError(DomainError):
     def __init__(self, condition_id: int):
         self.condition_id = condition_id

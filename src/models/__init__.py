@@ -39,6 +39,23 @@ from .report import (
     Report, ReportCreate, ReportUpdate, ReportInDB,
     ReportType, ReportFormat, ReportStatus
 )
+from .forecast import (
+    ForecastRun, ForecastRunCreate, ForecastRunResponse,
+    ForecastPoint, ForecastPointResponse, ForecastFullResponse
+)
+from .supplier import (
+    Supplier, SupplierCreate, SupplierUpdate, SupplierInDB, SupplierStatus
+)
+from .lot import (
+    Lot, LotCreate, LotUpdate, LotInDB, LotStatus,
+    LotEvent, LotEventCreate, LotEventInDB
+)
+from .audit import (
+    Audit, AuditCreate, AuditUpdate, AuditInDB, AuditStatus
+)
+from .delivery import (
+    Delivery, DeliveryCreate, DeliveryUpdate, DeliveryInDB, DeliveryStatus
+)
 
 # Re-export all models
 __all__ = [
@@ -70,4 +87,15 @@ __all__ = [
     # Reports
     'Report', 'ReportCreate', 'ReportUpdate', 'ReportInDB',
     'ReportType', 'ReportFormat', 'ReportStatus',
+
+    # Forecasts
+    'ForecastRun', 'ForecastRunCreate', 'ForecastRunResponse',
+    'ForecastPoint', 'ForecastPointResponse', 'ForecastFullResponse',
+
+    # Logistics: Suppliers, Lots/Traceability, Audits, Deliveries
+    'Supplier', 'SupplierCreate', 'SupplierUpdate', 'SupplierInDB', 'SupplierStatus',
+    'Lot', 'LotCreate', 'LotUpdate', 'LotInDB', 'LotStatus',
+    'LotEvent', 'LotEventCreate', 'LotEventInDB',
+    'Audit', 'AuditCreate', 'AuditUpdate', 'AuditInDB', 'AuditStatus',
+    'Delivery', 'DeliveryCreate', 'DeliveryUpdate', 'DeliveryInDB', 'DeliveryStatus',
 ]

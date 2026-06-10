@@ -91,6 +91,22 @@ app = FastAPI(
         {
             "name": "reports",
             "description": "Reportes generados del sistema"
+        },
+        {
+            "name": "suppliers",
+            "description": "Gestión de proveedores"
+        },
+        {
+            "name": "lots",
+            "description": "Lotes y trazabilidad de medicamentos"
+        },
+        {
+            "name": "audits",
+            "description": "Auditorías de almacén e inventario"
+        },
+        {
+            "name": "deliveries",
+            "description": "Entregas y recepción de pedidos"
         }
     ]
 )

@@ -8,7 +8,12 @@ from .endpoints import (
     prediction_metrics,
     notifications,
     orders,
-    reports
+    reports,
+    forecasts,
+    suppliers,
+    lots,
+    audits,
+    deliveries,
 )
 
 api_router = APIRouter()
@@ -22,3 +27,8 @@ api_router.include_router(categories.router, prefix="/categories", tags=["catego
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(orders.router, prefix="/orders", tags=["orders"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
+api_router.include_router(forecasts.router, prefix="/forecasts", tags=["forecasts"])
+api_router.include_router(suppliers.router, prefix="/suppliers", tags=["suppliers"])
+api_router.include_router(lots.router, prefix="/lots", tags=["lots"])
+api_router.include_router(audits.router, prefix="/audits", tags=["audits"])
+api_router.include_router(deliveries.router, prefix="/deliveries", tags=["deliveries"])
