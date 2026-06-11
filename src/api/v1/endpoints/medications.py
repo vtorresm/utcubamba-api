@@ -30,7 +30,7 @@ def test_endpoint():
 )
 def get_medications(
     skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=500),
     name: Optional[str] = Query(None),
     category_id: Optional[int] = Query(None),
     intake_type_id: Optional[int] = Query(None),

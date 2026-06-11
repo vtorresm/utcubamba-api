@@ -3,6 +3,8 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import logging
+import io
+import csv
 
 from src.models.report import (
     Report, ReportCreate, ReportStatus, ReportType
@@ -43,10 +45,14 @@ def generate_report(
         db.refresh(report)
     except Exception as e:
         logger.error("Error generando reporte %s: %s", report.id, str(e), exc_info=True)
-        report.status = ReportStatus.FAILED
-        report.error_message = str(e)
-        db.commit()
-        db.refresh(report)
+        try:
+            db.rollback()
+            report.status = ReportStatus.FAILED
+            report.error_message = str(e)[:999]
+            db.commit()
+            db.refresh(report)
+        except Exception:
+            db.rollback()
 
     return report
 
@@ -80,7 +86,7 @@ def _build_report_data(db: Session, report_type: ReportType, parameters: dict) -
         ).group_by(Movement.type).all()
         return {
             "movements": [
-                {"type": m.type, "count": m.count, "total_quantity": float(m.total_quantity)}
+                {"type": m.type, "count": m.count, "total_quantity": float(m.total_quantity or 0)}
                 for m in movements
             ],
             "period": parameters.get("period", "all")
@@ -110,7 +116,7 @@ def _build_report_data(db: Session, report_type: ReportType, parameters: dict) -
             {
                 "medication_id": row.medication_id,
                 "medication_name": row.medication_name,
-                "avg_predicted_usage": float(row.avg_predicted_usage),
+                "avg_predicted_usage": float(row.avg_predicted_usage or 0),
                 "trend": row.trend or "stable"
             }
             for row in rows
@@ -175,6 +181,93 @@ def get_report_by_id(db: Session, report_id: int) -> Report:
     if not report:
         raise ReportNotFoundError(report_id)
     return report
+
+
+def _report_rows(report: Report):
+    """Returns (headers, rows) for a report based on its type."""
+    data = report.data or {}
+    t = report.type
+
+    if t == "inventory":
+        headers = ["ID", "Nombre", "Stock", "Stock Mínimo", "Estado"]
+        rows = [[m["id"], m["name"], m["stock"], m["min_stock"], m["status"]]
+                for m in data.get("medications", [])]
+    elif t == "movements":
+        headers = ["Tipo", "Cantidad de movimientos", "Total unidades"]
+        rows = [[m["type"], m["count"], m["total_quantity"]]
+                for m in data.get("movements", [])]
+    elif t == "trends":
+        headers = ["Medicamento", "Uso promedio predicho", "Tendencia"]
+        rows = [[r["medication_name"], round(r["avg_predicted_usage"], 2), r["trend"]]
+                for r in data.get("trends", [])]
+    elif t == "alerts":
+        headers = ["Medicamento ID", "Probabilidad", "Nivel de alerta", "Fecha"]
+        rows = [[a["medication_id"], f'{a["probability"]:.0%}', a["alert_level"], a["date"]]
+                for a in data.get("alerts", [])]
+    elif t == "financial":
+        headers = ["Total órdenes", "Costo total (S/.)", "Período"]
+        rows = [[data.get("total_orders", 0), data.get("total_cost", 0), data.get("period", "—")]]
+    else:
+        headers = ["Información"]
+        rows = [[str(data)]]
+
+    return headers, rows
+
+
+def build_csv(report: Report) -> bytes:
+    headers, rows = _report_rows(report)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return buf.getvalue().encode("utf-8-sig")  # BOM para compatibilidad con Excel
+
+
+def build_pdf(report: Report) -> bytes:
+    from fpdf import FPDF
+
+    headers, rows = _report_rows(report)
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Título
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, report.title.encode("latin-1", "replace").decode("latin-1"), ln=True)
+
+    # Metadata
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(100, 100, 100)
+    generated = report.generated_at.strftime("%d/%m/%Y %H:%M") if report.generated_at else "—"
+    pdf.cell(0, 6, f"Generado: {generated}  |  Tipo: {report.type}", ln=True)
+    pdf.ln(4)
+
+    # Tabla
+    pdf.set_text_color(0, 0, 0)
+    col_width = (pdf.w - 20) / max(len(headers), 1)
+
+    # Headers
+    pdf.set_fill_color(0, 87, 205)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 9)
+    for h in headers:
+        pdf.cell(col_width, 8, str(h).encode("latin-1", "replace").decode("latin-1"), border=1, fill=True)
+    pdf.ln()
+
+    # Rows
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 9)
+    for i, row in enumerate(rows):
+        if i % 2 == 0:
+            pdf.set_fill_color(240, 244, 255)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        for cell in row:
+            pdf.cell(col_width, 7, str(cell).encode("latin-1", "replace").decode("latin-1"), border=1, fill=True)
+        pdf.ln()
+
+    return bytes(pdf.output())
 
 
 def delete_report(db: Session, report_id: int) -> None:

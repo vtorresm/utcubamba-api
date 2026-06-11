@@ -131,6 +131,10 @@ async def login(
                 "email": user.email,
                 "role": user.role,
                 "status": user.estado.value if user.estado else None,
+                "nombre": user.nombre,
+                "cargo": user.cargo,
+                "departamento": user.departamento,
+                "contacto": user.contacto,
             },
         }
         response = JSONResponse(content=body)

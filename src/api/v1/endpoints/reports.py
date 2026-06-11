@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
+import io
+import csv
 
 from src.core.database import get_db
 from src.dependencies.auth import get_current_user
@@ -70,6 +73,41 @@ def create_report(
     current_user: User = Depends(get_current_user),
 ):
     return report_service.generate_report(db=db, report_data=report_data, user=current_user)
+
+
+@router.get(
+    "/{report_id}/download",
+    summary="Descargar reporte",
+    description="Descarga el reporte en formato PDF o CSV.",
+)
+def download_report(
+    report_id: int,
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    report = report_service.get_report_by_id(db=db, report_id=report_id)
+    if current_user.role != Role.ADMIN and report.generated_by != current_user.id:
+        raise HTTPException(status_code=403, detail="No tiene permisos para descargar este reporte")
+    if report.status != "completed" or not report.data:
+        raise HTTPException(status_code=400, detail="El reporte no está disponible para descarga")
+
+    if format == "csv":
+        output = report_service.build_csv(report)
+        filename = f"reporte_{report.type}_{report.id}.csv"
+        return StreamingResponse(
+            iter([output]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    else:
+        output = report_service.build_pdf(report)
+        filename = f"reporte_{report.type}_{report.id}.pdf"
+        return StreamingResponse(
+            iter([output]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
 
 @router.delete(

@@ -207,6 +207,23 @@ def update_user(
             }
         )
 
+# Cambiar contraseña del usuario autenticado
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+@router.put("/me/password", status_code=204)
+def change_password(
+    payload: PasswordChange,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.verify_password(payload.current_password):
+        raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
+    current_user.hashed_password = User.hash_password(payload.new_password)
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+
 # Admin: actualizar permisos extra de un usuario
 @router.put("/admin/{user_id}/permissions", response_model=UserResponse)
 def admin_update_permissions(
