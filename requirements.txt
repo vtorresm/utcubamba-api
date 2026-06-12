@@ -26,3 +26,5 @@ prophet==1.1.5
 cmdstanpy==1.2.4
 scipy==1.13.1
 fpdf2==2.7.9
+openpyxl==3.1.2
+python-multipart==0.0.9
