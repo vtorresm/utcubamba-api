@@ -20,13 +20,9 @@ from src.models.prediction import (
     PredictionsListResponse, PredictionResponse, PredictionMetrics
 )
 
-# Services
-from src.services.prediction_service import (
-    predict_shortage_risk,
-    get_predictions as get_predictions_service,
-    calculate_risk_level,
-    calculate_days_until_shortage
-)
+# Forecasting (ARIMA / Prophet / Ensemble — reemplaza Random Forest)
+from src.core.factory import ForecastModelFactory
+from src.services.forecast_service import save_forecast
 
 # SQLAlchemy
 from sqlalchemy import func
@@ -265,68 +261,59 @@ async def predict_shortage(
         PredictionResponse: Objeto con la predicción y métricas asociadas
     """
     try:
-        logger.info("Iniciando predicción para medicamento ID: %s", medicamento_id)
-        
+        logger.info("Iniciando predicción (ensemble) para medicamento ID: %s", medicamento_id)
+
         # Verificar si el medicamento existe
         medication = db.query(Medication).filter(Medication.id == medicamento_id).first()
         if not medication:
-            logger.warning("Medicamento no encontrado: ID %s", medicamento_id)
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No se encontró el medicamento con ID {medicamento_id}"
+                detail=f"No se encontró el medicamento con ID {medicamento_id}",
             )
-            
-        # Obtener predicción del servicio
-        prediction_result = predict_shortage_risk(
-            db=db,
-            medication_id=medicamento_id,
-            days_ahead=dias_prediccion
-        )
-        
-        # Calcular intervalo de confianza (aproximado basado en el error del modelo)
-        mae = prediction_result.get('metrics', {}).get('mae', 0)
-        predicted_usage = prediction_result.get('predicted_usage', 0)
-        
-        # Crear respuesta
+
+        # Usar el modelo ensemble (ARIMA + Prophet) via Factory
+        fn = ForecastModelFactory.create("ensemble")
+        forecast_data = fn(db, medicamento_id, dias_prediccion, 24)
+        run = save_forecast(db, medicamento_id, forecast_data)
+
+        # Construir PredictionResponse compatible con el esquema existente
+        metrics = forecast_data.get("metrics", {})
+        daily_avg = float(sum(forecast_data["values"]) / max(len(forecast_data["values"]), 1))
+        lower_0 = float(forecast_data["lower_ci"][0]) if len(forecast_data["lower_ci"]) else 0.0
+        upper_0 = float(forecast_data["upper_ci"][0]) if len(forecast_data["upper_ci"]) else daily_avg * 2
+
         response_data = {
-            "id": 0,  # Se actualizará después de guardar
+            "id": run.id,
             "medication_id": medicamento_id,
             "date": datetime.utcnow(),
-            "real_usage": 0.0,  # Se actualizará cuando haya datos reales
-            "predicted_usage": predicted_usage,
-            "stock": prediction_result.get('current_stock', 0),
+            "real_usage": 0.0,
+            "predicted_usage": daily_avg,
+            "stock": float(medication.stock),
             "month_of_year": datetime.utcnow().month,
-            "regional_demand": 0.0,  # Se podría obtener de datos externos
-            "shortage": prediction_result.get('days_until_shortage', 999) <= 7,
-            "probability": prediction_result.get('confidence', 0.5),
-            "confidence_interval_lower": max(0, predicted_usage - mae),
-            "confidence_interval_upper": predicted_usage + mae,
-            "alert_level": prediction_result.get('risk_level', 'low'),
-            "trend": 'up' if prediction_result.get('predicted_usage', 0) > 0 else 'down',
-            "seasonality_coefficient": 1.0,  # Se podría calcular basado en estacionalidad
+            "regional_demand": 0.0,
+            "shortage": (run.days_until_shortage or 999) <= 7,
+            "probability": run.shortage_probability or 0.0,
+            "confidence_interval_lower": lower_0,
+            "confidence_interval_upper": upper_0,
+            "alert_level": run.alert_level or "low",
+            "trend": "up" if daily_avg > 0 else "stable",
+            "seasonality_coefficient": 1.0,
             "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "updated_at": datetime.utcnow(),
         }
-        
-        # Guardar predicción en la base de datos
-        db_prediction = Prediction(**response_data)
-        db.add(db_prediction)
-        db.commit()
-        db.refresh(db_prediction)
-        
-        # Actualizar ID en la respuesta
-        response_data["id"] = db_prediction.id
-        
-        logger.info("Predicción completada para medicamento ID: %s", medicamento_id)
+
+        logger.info("Predicción ensemble completada para medicamento ID: %s", medicamento_id)
         return PredictionResponse(**response_data)
-        
+
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except Exception as e:
-        logger.error("Error en la predicción para medicamento %s: %s", medicamento_id, str(e), exc_info=True)
+        logger.error("Error en predicción para medicamento %s: %s", medicamento_id, str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "internal_error", "message": "Error interno del servidor"}
+            detail={"error": "internal_error", "message": "Error interno del servidor"},
         )
 
 # Metrics response model
@@ -352,7 +339,7 @@ class MetricsHistoryResponse(BaseModel):
             "content": {
                 "application/json": {
                     "example": {
-                        "model_type": "RandomForestRegressor",
+                        "model_type": "ensemble (ARIMA + Prophet)",
                         "last_updated": "2025-07-06T17:30:00.000000",
                         "metrics_history": [
                             {
@@ -405,9 +392,9 @@ async def get_model_metrics(
         ]
 
         return MetricsHistoryResponse(
-            model_type="RandomForestRegressor",
+            model_type="ensemble (ARIMA + Prophet)",
             last_updated=datetime.utcnow(),
-            metrics_history=metrics_history
+            metrics_history=metrics_history,
         )
 
     except HTTPException:
@@ -785,17 +772,21 @@ async def evaluate_model(
                 detail=f"No se encontró el medicamento con ID {medicamento_id}"
             )
 
-        # Aquí iría la lógica real de evaluación del modelo
-        # Por ahora, devolvemos una respuesta de prueba
+        # Ejecutar ensemble y devolver sus métricas de walk-forward validation
+        from src.core.factory import ForecastModelFactory
+        from src.services.forecast_service import save_forecast as _save_fc
+        fn = ForecastModelFactory.create("ensemble")
+        forecast_data = fn(db, medicamento_id, 30, 18)
+        metrics = forecast_data.get("metrics", {})
+
         return EvaluationResponse(
-            model_type="RandomForest",
+            model_type="ensemble (ARIMA + Prophet)",
             metrics={
-                "accuracy": 0.95,
-                "precision": 0.94,
-                "recall": 0.96,
-                "f1_score": 0.95,
-                "roc_auc": 0.98
-            }
+                "mae": round(metrics.get("mae", 0.0), 4),
+                "mape": round(metrics.get("mape", 0.0), 4),
+                "rmse": round(metrics.get("rmse", 0.0), 4),
+                "r2": round(metrics.get("r2", 0.0), 4),
+            },
         )
 
     except HTTPException:

@@ -1,80 +1,64 @@
 """
 Servicio de forecasting de consumo de medicamentos.
 
-Implementa tres modelos de predicción de series de tiempo:
-  - ARIMA   (Auto-ARIMA via pmdarima)
-  - Prophet (Facebook / Meta Prophet)
-  - Random Forest (sklearn, ya existente — usado como baseline)
-  - Ensemble: promedio ponderado de los modelos disponibles
+Modelos: ARIMA (pmdarima), Prophet (Facebook), Ensemble (1/RMSE ponderado).
 
-Flujo:
-  1. get_consumption_series()  → agrega movimientos OUT por día
-  2. run_*_forecast()          → entrena modelo y genera serie futura
-  3. save_forecast()           → persiste ForecastRun + ForecastPoints en DB
-  4. get_shortage_summary()    → resumen de riesgo por medicamento
+Mejoras academicas implementadas
+---------------------------------
+1. Validacion Walk-forward (expanding window, 5 folds) reemplaza holdout estatico.
+2. Probabilidad estadistica de desabastecimiento via scipy.stats.norm desde IC 95%.
+3. Diagnostico Prophet: cross_validation() + performance_metrics() oficiales.
+4. Persistencia de modelos con joblib (clave = hash MD5 de la serie).
+5. Patron Repository: MovementRepository y ForecastRepository encapsulan la BD.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import Optional
 
+import joblib
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from sqlmodel import Session, select
 
-from src.models.forecast import ForecastRun, ForecastPoint, ForecastRunCreate
+from src.models.forecast import ForecastPoint, ForecastRun
 from src.models.medication import Medication
-from src.models.movement import Movement, MovementType
+from src.repositories import ForecastRepository, MovementRepository
 
 logger = logging.getLogger(__name__)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1.  Preparación de datos
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_consumption_series(
-    db: Session,
-    medication_id: int,
-    months_back: int = 24,
-    freq: str = "D",          # "D" daily, "W" weekly, "ME" month-end
-) -> pd.Series:
-    """
-    Devuelve una Serie de Pandas con el consumo (movimientos OUT)
-    del medicamento, indexada por fecha y rellenada con ceros.
-    """
-    end_date = datetime.utcnow()
-    start_date = end_date - timedelta(days=30 * months_back)
-
-    stmt = select(Movement).where(
-        Movement.medication_id == medication_id,
-        Movement.type == MovementType.OUT,
-        Movement.date >= start_date,
-        Movement.date <= end_date,
-    )
-    movements = db.exec(stmt).all()
-
-    if not movements:
-        return pd.Series(dtype=float)
-
-    df = pd.DataFrame([{"date": m.date.date(), "quantity": m.quantity} for m in movements])
-    df["date"] = pd.to_datetime(df["date"])
-    series = df.groupby("date")["quantity"].sum()
-
-    # Completar fechas faltantes con 0
-    full_idx = pd.date_range(start=series.index.min(), end=series.index.max(), freq="D")
-    series = series.reindex(full_idx, fill_value=0.0)
-
-    if freq != "D":
-        series = series.resample(freq).sum()
-
-    return series
+_MODEL_CACHE_DIR = os.environ.get("FORECAST_CACHE_DIR", "/tmp/forecast_models")
+os.makedirs(_MODEL_CACHE_DIR, exist_ok=True)
 
 
-def _eval_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
-    """MAE, MAPE, RMSE, R²."""
+# ---------------------------------------------------------------------------
+# 1. Utilidades de serie de tiempo
+# ---------------------------------------------------------------------------
+
+def get_consumption_series(db, medication_id, months_back=24, freq="D"):
+    """Devuelve la serie de consumo diario via MovementRepository."""
+    repo = MovementRepository(db)
+    return repo.get_consumption_series(medication_id, months_back=months_back, freq=freq)
+
+
+def _series_hash(series):
+    raw = ",".join(f"{v:.4f}" for v in series.values)
+    return hashlib.md5(raw.encode()).hexdigest()[:10]
+
+
+def _cache_path(medication_id, model_type, series_hash):
+    return os.path.join(_MODEL_CACHE_DIR, f"{model_type}_med{medication_id}_{series_hash}.joblib")
+
+
+# ---------------------------------------------------------------------------
+# 2. Metricas
+# ---------------------------------------------------------------------------
+
+def _eval_metrics(y_true, y_pred):
     mae = float(np.mean(np.abs(y_true - y_pred)))
     mask = y_true != 0
     mape = float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100) if mask.any() else 0.0
@@ -85,56 +69,99 @@ def _eval_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     return {"mae": mae, "mape": mape, "rmse": rmse, "r2": r2}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2.  ARIMA
-# ─────────────────────────────────────────────────────────────────────────────
-
-def run_arima_forecast(
-    db: Session,
-    medication_id: int,
-    horizon_days: int = 30,
-    months_back: int = 18,
-) -> dict:
+def _walk_forward_metrics(series, fit_fn, n_splits=5, test_window=14):
     """
-    Auto-ARIMA sobre la serie de consumo diario.
-    Usa pmdarima.auto_arima para seleccionar automáticamente (p,d,q)(P,D,Q).
+    Validacion walk-forward (expanding window).
+
+    Para cada fold k: train = serie[:N - k*test_window], test = siguientes test_window puntos.
+    Promedia las metricas de todos los folds exitosos.
+
+    Parameters
+    ----------
+    fit_fn : callable(train: pd.Series, n_periods: int) -> np.ndarray
+    """
+    min_train = max(30, len(series) // 3)
+    all_metrics = []
+
+    for k in range(n_splits, 0, -1):
+        test_end = len(series) - (k - 1) * test_window
+        test_start = test_end - test_window
+        if test_start < min_train:
+            continue
+        train = series.iloc[:test_start]
+        test = series.iloc[test_start:test_end]
+        try:
+            preds = np.maximum(fit_fn(train, len(test)), 0)
+            all_metrics.append(_eval_metrics(test.values, preds))
+        except Exception as e:
+            logger.debug("Walk-forward fold %d fallo: %s", k, e)
+
+    if not all_metrics:
+        return {"mae": 0.0, "mape": 0.0, "rmse": 0.0, "r2": 0.0, "n_folds": 0}
+
+    avg = {m: float(np.mean([x[m] for x in all_metrics])) for m in ("mae", "mape", "rmse", "r2")}
+    avg["n_folds"] = len(all_metrics)
+    return avg
+
+
+# ---------------------------------------------------------------------------
+# 3. ARIMA
+# ---------------------------------------------------------------------------
+
+def run_arima_forecast(db, medication_id, horizon_days=30, months_back=18):
+    """
+    Auto-ARIMA con walk-forward validation (5 folds) y persistencia joblib.
+
+    Selecciona (p,d,q)(P,D,Q) minimizando AIC, estacionalidad semanal m=7.
+    El modelo se serializa con joblib usando el hash de la serie como clave.
     """
     try:
         import pmdarima as pm
     except ImportError:
-        raise RuntimeError("pmdarima no está instalado. Agrega 'pmdarima' a requirements.txt")
+        raise RuntimeError("pmdarima no instalado.")
 
     series = get_consumption_series(db, medication_id, months_back=months_back, freq="D")
     if len(series) < 14:
-        raise ValueError(f"Datos insuficientes para ARIMA: {len(series)} días (mínimo 14)")
+        raise ValueError(f"Datos insuficientes para ARIMA: {len(series)} dias (minimo 14)")
 
-    # Dividir en train/test (últimos 30 días como test si hay suficientes)
-    test_size = min(30, len(series) // 5)
-    train = series.iloc[:-test_size]
-    test  = series.iloc[-test_size:]
+    s_hash = _series_hash(series)
+    cache = _cache_path(medication_id, "arima", s_hash)
 
-    model = pm.auto_arima(
-        train,
-        seasonal=True,
-        m=7,                  # estacionalidad semanal
-        stepwise=True,
-        suppress_warnings=True,
-        error_action="ignore",
-        max_p=3, max_q=3, max_P=2, max_Q=2,
-        information_criterion="aic",
-    )
+    model = None
+    if os.path.exists(cache):
+        try:
+            model = joblib.load(cache)
+            logger.info("ARIMA cargado desde cache: %s", cache)
+        except Exception:
+            model = None
 
-    # Evaluación sobre test
-    test_pred, test_ci = model.predict(n_periods=test_size, return_conf_int=True)
-    metrics = _eval_metrics(test.values, test_pred)
+    def _arima_fit_predict(train, n_periods):
+        m = pm.auto_arima(
+            train, seasonal=True, m=7, stepwise=True,
+            suppress_warnings=True, error_action="ignore",
+            max_p=3, max_q=3, max_P=2, max_Q=2,
+            information_criterion="aic",
+        )
+        preds, _ = m.predict(n_periods=n_periods, return_conf_int=True)
+        return preds
 
-    # Re-entrenar con toda la serie para forecast final
-    model.update(test)
-    forecast_vals, forecast_ci = model.predict(
-        n_periods=horizon_days, return_conf_int=True
-    )
+    wf_metrics = _walk_forward_metrics(series, _arima_fit_predict, n_splits=5, test_window=14)
+    wf_metrics["validation"] = "walk_forward_5_folds"
+
+    if model is None:
+        model = pm.auto_arima(
+            series, seasonal=True, m=7, stepwise=True,
+            suppress_warnings=True, error_action="ignore",
+            max_p=3, max_q=3, max_P=2, max_Q=2,
+            information_criterion="aic",
+        )
+        try:
+            joblib.dump(model, cache)
+        except Exception as e:
+            logger.warning("No se pudo guardar cache ARIMA: %s", e)
+
+    forecast_vals, forecast_ci = model.predict(n_periods=horizon_days, return_conf_int=True)
     forecast_vals = np.maximum(forecast_vals, 0)
-
     dates = pd.date_range(start=series.index[-1] + timedelta(days=1), periods=horizon_days, freq="D")
 
     return {
@@ -143,8 +170,9 @@ def run_arima_forecast(
             "order": list(model.order),
             "seasonal_order": list(model.seasonal_order),
             "aic": float(model.aic()),
+            "validation": "walk_forward_5_folds",
         },
-        "metrics": metrics,
+        "metrics": wf_metrics,
         "dates": dates,
         "values": forecast_vals,
         "lower_ci": np.maximum(forecast_ci[:, 0], 0),
@@ -152,148 +180,174 @@ def run_arima_forecast(
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3.  Prophet
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# 4. Prophet
+# ---------------------------------------------------------------------------
 
-def run_prophet_forecast(
-    db: Session,
-    medication_id: int,
-    horizon_days: int = 30,
-    months_back: int = 24,
-) -> dict:
+def run_prophet_forecast(db, medication_id, horizon_days=30, months_back=24):
     """
-    Facebook Prophet con estacionalidad semanal y anual.
-    Robusto ante datos faltantes y cambios de tendencia.
+    Facebook Prophet con diagnostico oficial (cross_validation) y persistencia joblib.
+
+    Usa estacionalidad multiplicativa. La validacion usa cross_validation() de
+    prophet.diagnostics, que implementa walk-forward con ventana deslizante.
     """
     try:
         from prophet import Prophet
+        from prophet.diagnostics import cross_validation, performance_metrics
     except ImportError:
-        raise RuntimeError("prophet no está instalado. Agrega 'prophet' a requirements.txt")
+        raise RuntimeError("prophet no instalado.")
 
-    # Verificar que cmdstan esté disponible
     try:
         import cmdstanpy
         cmdstanpy.cmdstan_path()
     except Exception:
-        raise RuntimeError(
-            "cmdstan no está instalado. "
-            "Usa el modelo 'arima' o ejecuta: docker compose up -d --build api"
-        )
+        raise RuntimeError("cmdstan no disponible. Usa 'arima' o reconstruye la imagen Docker.")
 
     series = get_consumption_series(db, medication_id, months_back=months_back, freq="D")
     if len(series) < 30:
-        raise ValueError(f"Datos insuficientes para Prophet: {len(series)} días (mínimo 30)")
+        raise ValueError(f"Datos insuficientes para Prophet: {len(series)} dias (minimo 30)")
 
-    # Prophet necesita columnas 'ds' y 'y'
     df_prophet = pd.DataFrame({"ds": series.index, "y": series.values})
+    yearly = len(df_prophet) > 365
 
-    # Train/test split
-    test_size = min(30, len(df_prophet) // 5)
-    df_train = df_prophet.iloc[:-test_size]
-    df_test  = df_prophet.iloc[-test_size:]
+    s_hash = _series_hash(series)
+    cache = _cache_path(medication_id, "prophet", s_hash)
 
-    try:
-        model = Prophet(
-            weekly_seasonality=True,
-            yearly_seasonality=True if len(df_train) > 365 else False,
-            daily_seasonality=False,
-            seasonality_mode="multiplicative",
-            interval_width=0.95,
-        )
-        model.fit(df_train)
-    except AttributeError as e:
-        raise RuntimeError(
-            f"Incompatibilidad prophet/cmdstanpy ({e}). "
-            "Reconstruye la imagen: docker compose up -d --build api"
-        )
+    model_final = None
+    if os.path.exists(cache):
+        try:
+            model_final = joblib.load(cache)
+            logger.info("Prophet cargado desde cache: %s", cache)
+        except Exception:
+            model_final = None
 
-    # Eval sobre test
-    future_test = model.make_future_dataframe(periods=test_size, include_history=False)
-    fc_test = model.predict(future_test)
-    test_pred = np.maximum(fc_test["yhat"].values, 0)
-    metrics = _eval_metrics(df_test["y"].values, test_pred)
+    # Diagnostico via prophet.diagnostics
+    diag_metrics = {}
+    if len(df_prophet) >= 90:
+        try:
+            _m_diag = Prophet(
+                weekly_seasonality=True, yearly_seasonality=yearly,
+                daily_seasonality=False, seasonality_mode="multiplicative",
+                interval_width=0.95,
+            )
+            _m_diag.fit(df_prophet)
+            n = len(df_prophet)
+            initial_days = max(60, int(n * 0.60))
+            period_days = max(14, int(n * 0.10))
+            horizon_cv = f"{min(horizon_days, 30)} days"
+            df_cv = cross_validation(
+                _m_diag,
+                initial=f"{initial_days} days",
+                period=f"{period_days} days",
+                horizon=horizon_cv,
+                parallel=None,
+            )
+            df_perf = performance_metrics(df_cv, rolling_window=1)
+            diag_metrics = {
+                "mae": float(df_perf["mae"].mean()),
+                "rmse": float(df_perf["rmse"].mean()),
+                "mape": float(df_perf["mape"].mean() * 100),
+                "r2": 0.0,
+                "n_folds": int(df_cv["cutoff"].nunique()),
+                "validation": "prophet_cross_validation",
+            }
+        except Exception as e:
+            logger.warning("Prophet cross_validation fallo: %s", e)
 
-    # Re-fit con todos los datos
-    model2 = Prophet(
-        weekly_seasonality=True,
-        yearly_seasonality=True if len(df_prophet) > 365 else False,
-        daily_seasonality=False,
-        seasonality_mode="multiplicative",
-        interval_width=0.95,
-    )
-    model2.fit(df_prophet)
-    future = model2.make_future_dataframe(periods=horizon_days, include_history=False)
-    forecast = model2.predict(future)
+    # Fallback walk-forward si CV fallo
+    if not diag_metrics:
+        def _prophet_fit_predict(train, n_periods):
+            df_t = pd.DataFrame({"ds": train.index, "y": train.values})
+            m = Prophet(
+                weekly_seasonality=True, yearly_seasonality=len(df_t) > 365,
+                daily_seasonality=False, seasonality_mode="multiplicative",
+                interval_width=0.95,
+            )
+            m.fit(df_t)
+            fut = m.make_future_dataframe(periods=n_periods, include_history=False)
+            fc = m.predict(fut)
+            return np.maximum(fc["yhat"].values, 0)
 
-    dates = pd.DatetimeIndex(forecast["ds"])
-    values = np.maximum(forecast["yhat"].values, 0)
-    lower_ci = np.maximum(forecast["yhat_lower"].values, 0)
-    upper_ci = forecast["yhat_upper"].values
+        wf = _walk_forward_metrics(series, _prophet_fit_predict, n_splits=3, test_window=14)
+        diag_metrics = {**wf, "validation": "walk_forward_3_folds"}
+
+    # Modelo final sobre toda la serie
+    if model_final is None:
+        try:
+            model_final = Prophet(
+                weekly_seasonality=True, yearly_seasonality=yearly,
+                daily_seasonality=False, seasonality_mode="multiplicative",
+                interval_width=0.95,
+            )
+            model_final.fit(df_prophet)
+            try:
+                joblib.dump(model_final, cache)
+            except Exception as e:
+                logger.warning("No se pudo guardar cache Prophet: %s", e)
+        except AttributeError as e:
+            raise RuntimeError(f"Incompatibilidad prophet/cmdstanpy ({e}).")
+
+    future = model_final.make_future_dataframe(periods=horizon_days, include_history=False)
+    forecast = model_final.predict(future)
 
     return {
         "model_type": "prophet",
         "parameters": {
             "seasonality_mode": "multiplicative",
             "weekly_seasonality": True,
-            "yearly_seasonality": len(df_prophet) > 365,
+            "yearly_seasonality": yearly,
+            "interval_width": 0.95,
         },
-        "metrics": metrics,
-        "dates": dates,
-        "values": values,
-        "lower_ci": lower_ci,
-        "upper_ci": upper_ci,
+        "metrics": diag_metrics,
+        "dates": pd.DatetimeIndex(forecast["ds"]),
+        "values": np.maximum(forecast["yhat"].values, 0),
+        "lower_ci": np.maximum(forecast["yhat_lower"].values, 0),
+        "upper_ci": forecast["yhat_upper"].values,
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4.  Ensemble (promedio ponderado por 1/RMSE)
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# 5. Ensemble
+# ---------------------------------------------------------------------------
 
-def run_ensemble_forecast(
-    db: Session,
-    medication_id: int,
-    horizon_days: int = 30,
-    months_back: int = 24,
-) -> dict:
+def run_ensemble_forecast(db, medication_id, horizon_days=30, months_back=24):
     """
     Combina ARIMA y Prophet con pesos proporcionales a 1/RMSE.
-    Si un modelo falla, se usa el otro individualmente.
+    Degrada gracefully si un modelo falla.
     """
     results = {}
-    errors  = {}
+    errors = {}
 
     for name, fn in [("arima", run_arima_forecast), ("prophet", run_prophet_forecast)]:
         try:
             results[name] = fn(db, medication_id, horizon_days, months_back)
         except Exception as e:
             errors[name] = str(e)
-            logger.warning("Ensemble: %s falló — %s", name, e)
+            logger.warning("Ensemble: %s fallo - %s", name, e)
 
     if not results:
         raise ValueError(f"Todos los modelos fallaron: {errors}")
 
-    # Calcular pesos por 1/RMSE
     rmse_vals = {k: v["metrics"]["rmse"] for k, v in results.items()}
-    inv_rmse = {k: 1 / (v + 1e-9) for k, v in rmse_vals.items()}
+    inv_rmse = {k: 1.0 / (v + 1e-9) for k, v in rmse_vals.items()}
     total = sum(inv_rmse.values())
     weights = {k: v / total for k, v in inv_rmse.items()}
 
-    # Combinar series
     base_dates = list(results.values())[0]["dates"]
-    combined_values   = np.zeros(horizon_days)
-    combined_lower_ci = np.zeros(horizon_days)
-    combined_upper_ci = np.zeros(horizon_days)
+    combined_values = np.zeros(horizon_days)
+    combined_lower = np.zeros(horizon_days)
+    combined_upper = np.zeros(horizon_days)
 
     for name, res in results.items():
         w = weights[name]
-        combined_values   += w * res["values"]
-        combined_lower_ci += w * res["lower_ci"]
-        combined_upper_ci += w * res["upper_ci"]
+        combined_values += w * res["values"]
+        combined_lower  += w * res["lower_ci"]
+        combined_upper  += w * res["upper_ci"]
 
-    avg_metrics = {}
-    for metric in ["mae", "mape", "rmse", "r2"]:
-        avg_metrics[metric] = float(np.mean([r["metrics"][metric] for r in results.values()]))
+    avg_metrics = {
+        m: float(np.mean([r["metrics"][m] for r in results.values()]))
+        for m in ("mae", "mape", "rmse", "r2")
+    }
 
     return {
         "model_type": "ensemble",
@@ -301,61 +355,89 @@ def run_ensemble_forecast(
             "models_used": list(results.keys()),
             "weights": weights,
             "individual_rmse": rmse_vals,
+            "validation": "walk_forward_per_model",
         },
         "metrics": avg_metrics,
         "dates": base_dates,
         "values": combined_values,
-        "lower_ci": combined_lower_ci,
-        "upper_ci": combined_upper_ci,
+        "lower_ci": combined_lower,
+        "upper_ci": combined_upper,
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5.  Persistencia y helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# 6. Probabilidad estadistica de desabastecimiento
+# ---------------------------------------------------------------------------
 
-def _compute_shortage_risk(
-    medication: Medication,
-    daily_avg: float,
-    horizon_days: int,
-) -> dict:
-    """Calcula riesgo de desabastecimiento dado un consumo diario promedio."""
-    if daily_avg <= 0:
-        return {"days_until_shortage": None, "shortage_probability": 0.0, "alert_level": "low"}
+def _compute_shortage_probability(medication, forecast_values, lower_ci, upper_ci):
+    """
+    Probabilidad de desabastecimiento derivada estadisticamente del IC 95%.
 
+    Metodologia
+    -----------
+    IC 95% del modelo: [lower, upper] = mu +/- 1.96 * sigma_diario
+      => sigma_diario = (upper - lower) / 3.92
+
+    Consumo acumulado en H dias (por TCL):
+      C_total ~ N(mu_total, sigma_total^2)
+      mu_total    = sum(forecast_values)
+      sigma_total = sqrt(sum(sigma_diario^2))
+
+    P(desabasto) = P(C_total > stock_disponible)
+                 = 1 - Phi((stock - mu_total) / sigma_total)
+    con Phi = CDF de la normal estandar (scipy.stats.norm).
+    """
     available = max(0.0, float(medication.stock) - float(medication.min_stock))
-    days = int(available / daily_avg)
 
-    if days <= 7:
+    sigma_daily = (upper_ci - lower_ci) / (2.0 * 1.96)
+    sigma_daily = np.maximum(sigma_daily, 1e-9)
+
+    cum_mean = float(np.sum(forecast_values))
+    cum_std = float(np.sqrt(np.sum(sigma_daily ** 2)))
+
+    if cum_std < 1e-6:
+        prob = 1.0 if cum_mean > available else 0.0
+    else:
+        prob = float(1.0 - norm.cdf(available, loc=cum_mean, scale=cum_std))
+
+    prob = float(np.clip(prob, 0.0, 1.0))
+
+    cumsum = np.cumsum(forecast_values)
+    arr = np.where(cumsum >= available)[0]
+    days_until = int(arr[0]) + 1 if len(arr) > 0 else None
+
+    if prob >= 0.70:
         level = "high"
-        prob  = 0.90
-    elif days <= 14:
+    elif prob >= 0.35:
         level = "medium"
-        prob  = 0.55
-    elif days <= 30:
-        level = "medium"
-        prob  = 0.30
     else:
         level = "low"
-        prob  = 0.05
 
     return {
-        "days_until_shortage": days,
-        "shortage_probability": prob,
+        "days_until_shortage": days_until,
+        "shortage_probability": round(prob, 4),
         "alert_level": level,
     }
 
 
-def save_forecast(db: Session, medication_id: int, forecast_data: dict) -> ForecastRun:
-    """Persiste un ForecastRun con sus ForecastPoints en la base de datos."""
+# ---------------------------------------------------------------------------
+# 7. Persistencia en BD
+# ---------------------------------------------------------------------------
+
+def save_forecast(db, medication_id, forecast_data):
+    """
+    Persiste ForecastRun + ForecastPoints usando ForecastRepository.
+    La probabilidad de desabastecimiento se deriva del IC (estadisticamente).
+    """
     medication = db.get(Medication, medication_id)
     if not medication:
         raise ValueError(f"Medicamento {medication_id} no encontrado")
 
-    daily_avg = float(np.mean(forecast_data["values"]))
-    horizon   = len(forecast_data["dates"])
-    risk      = _compute_shortage_risk(medication, daily_avg, horizon)
-    metrics   = forecast_data.get("metrics", {})
+    risk = _compute_shortage_probability(
+        medication, forecast_data["values"], forecast_data["lower_ci"], forecast_data["upper_ci"]
+    )
+    metrics = forecast_data.get("metrics", {})
+    horizon = len(forecast_data["dates"])
 
     run = ForecastRun(
         medication_id=medication_id,
@@ -371,44 +453,32 @@ def save_forecast(db: Session, medication_id: int, forecast_data: dict) -> Forec
         shortage_probability=risk["shortage_probability"],
         alert_level=risk["alert_level"],
     )
-    db.add(run)
-    db.flush()  # obtener run.id sin commit
 
-    for date, val, low, up in zip(
-        forecast_data["dates"],
-        forecast_data["values"],
-        forecast_data["lower_ci"],
-        forecast_data["upper_ci"],
-    ):
-        pt = ForecastPoint(
-            forecast_run_id=run.id,
+    points = [
+        ForecastPoint(
+            forecast_run_id=0,
             date=pd.Timestamp(date).to_pydatetime(),
             predicted_value=max(0.0, float(val)),
             lower_ci=max(0.0, float(low)),
             upper_ci=max(0.0, float(up)),
         )
-        db.add(pt)
+        for date, val, low, up in zip(
+            forecast_data["dates"], forecast_data["values"],
+            forecast_data["lower_ci"], forecast_data["upper_ci"],
+        )
+    ]
 
-    db.commit()
-    db.refresh(run)
-    return run
+    repo = ForecastRepository(db)
+    return repo.save_run_with_points(run, points)
 
 
-def get_forecast_summary(db: Session) -> list[dict]:
-    """
-    Resumen de desabastecimiento para todos los medicamentos,
-    usando el ForecastRun más reciente de cada uno.
-    """
+def get_forecast_summary(db):
+    """Resumen de riesgo de desabastecimiento para todos los medicamentos."""
     medications = db.exec(select(Medication)).all()
+    forecast_repo = ForecastRepository(db)
     summary = []
     for med in medications:
-        latest = (
-            db.exec(
-                select(ForecastRun)
-                .where(ForecastRun.medication_id == med.id)
-                .order_by(ForecastRun.created_at.desc())
-            ).first()
-        )
+        latest = forecast_repo.get_latest_for_medication(med.id)
         summary.append({
             "medication_id": med.id,
             "medication_name": med.name,

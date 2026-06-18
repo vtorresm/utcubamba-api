@@ -19,22 +19,14 @@ from src.dependencies.auth import get_current_user
 from src.models.user import User
 from src.models.medication import Medication
 from src.models.forecast import ForecastRun, ForecastPoint, ForecastFullResponse
+from src.core.factory import ForecastModelFactory
 from src.services.forecast_service import (
-    run_arima_forecast,
-    run_prophet_forecast,
-    run_ensemble_forecast,
     save_forecast,
     get_forecast_summary,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-MODEL_FNS = {
-    "arima":   run_arima_forecast,
-    "prophet": run_prophet_forecast,
-    "ensemble": run_ensemble_forecast,
-}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,14 +61,13 @@ async def run_forecast(
     if not medication:
         raise HTTPException(status_code=404, detail=f"Medicamento {medication_id} no encontrado")
 
-    if model not in MODEL_FNS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Modelo '{model}' no válido. Opciones: {list(MODEL_FNS.keys())}",
-        )
+    try:
+        # Patrón Factory: ForecastModelFactory.create() resuelve y valida el modelo
+        fn = ForecastModelFactory.create(model)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     try:
-        fn = MODEL_FNS[model]
         result = fn(db, medication_id, horizon_days, months_back)
         run = save_forecast(db, medication_id, result)
 

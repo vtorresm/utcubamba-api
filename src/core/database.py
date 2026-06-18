@@ -4,23 +4,16 @@ from typing import Generator
 from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy.orm import sessionmaker
 
+# Patron Singleton: el engine se gestiona a traves de DatabaseSingleton
+# para garantizar una unica instancia del connection pool en toda la app.
+from src.core.singleton import DatabaseSingleton
+
 logger = logging.getLogger(__name__)
 
-
-def _get_engine():
-    from src.core.config import settings
-    echo_sql = settings.ENVIRONMENT != "production"
-    engine = create_engine(
-        settings.DATABASE_URL,
-        echo=echo_sql,
-        pool_pre_ping=True,
-        pool_recycle=300,
-    )
-    return engine
-
-
-engine = _get_engine()
-SessionLocal = sessionmaker(bind=engine, class_=Session)
+# Obtener el engine desde el Singleton (crea el pool si es la primera vez)
+_db_singleton = DatabaseSingleton()
+engine = _db_singleton.engine
+SessionLocal = _db_singleton.session_factory
 
 
 def _import_models():
@@ -41,7 +34,7 @@ def _import_models():
 def create_db_and_tables():
     _import_models()
     logger.info("Creating database tables...")
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(DatabaseSingleton().engine)
     logger.info("Database tables created successfully")
 
 
