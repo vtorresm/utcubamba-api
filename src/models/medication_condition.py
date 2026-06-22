@@ -1,32 +1,26 @@
-from sqlmodel import SQLModel, Field, Relationship
-from .base import BaseModel
+from typing import TYPE_CHECKING
+from datetime import datetime
+from sqlmodel import Field, Relationship, SQLModel
 
-class MedicationConditionLink(BaseModel, table=True):
-    """Association table for many-to-many relationship between Medication and Condition."""
+if TYPE_CHECKING:
+    from .medication import Medication
+    from .condition import Condition
+
+
+class MedicationConditionLink(SQLModel, table=True):
+    """Tabla asociativa many-to-many entre Medication y Condition.
+
+    Usa clave primaria compuesta (medication_id + condition_id) — sin columna
+    id autoincrementada — que es el patron correcto para tablas de union en
+    PostgreSQL con SQLModel.
+    """
     __tablename__ = "medication_condition"
-    
-    # Primary key
-    id: int = Field(default=None, primary_key=True, index=True)
-    
-    # Foreign keys
-    medication_id: int = Field(
-        default=None,
-        foreign_key="medications.id",
-        nullable=False,
-        index=True
-    )
-    condition_id: int = Field(
-        default=None,
-        foreign_key="conditions.id",
-        nullable=False,
-        index=True
-    )
-    
-    # Relationships
+
+    medication_id: int = Field(foreign_key="medications.id", primary_key=True)
+    condition_id: int  = Field(foreign_key="conditions.id",  primary_key=True)
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
     medication: "Medication" = Relationship(back_populates="condition_links")
-    condition: "Condition" = Relationship(back_populates="medication_links")
-    
-    # Add a unique constraint on the combination of medication_id and condition_id
-    __table_args__ = (
-        {'sqlite_autoincrement': True},
-    )
+    condition:  "Condition"  = Relationship(back_populates="medication_links")

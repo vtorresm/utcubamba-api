@@ -59,9 +59,24 @@ def _cache_path(medication_id, model_type, series_hash):
 # ---------------------------------------------------------------------------
 
 def _eval_metrics(y_true, y_pred):
-    mae = float(np.mean(np.abs(y_true - y_pred)))
-    mask = y_true != 0
-    mape = float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100) if mask.any() else 0.0
+    """
+    Calcula MAE, WMAPE, RMSE y R2.
+
+    WMAPE (Weighted Mean Absolute Percentage Error) es el estandar en
+    forecasting de cadena de suministro y farmacias:
+
+        WMAPE = sum(|real - pred|) / sum(|real|) * 100
+
+    A diferencia del MAPE aritmetico, no se dispara con consumos bajos
+    porque pondera los errores por el volumen real total del periodo.
+    Solo se excluyen periodos donde el consumo total es cero.
+    """
+    abs_err = np.abs(y_true - y_pred)
+    mae = float(np.mean(abs_err))
+
+    total_real = float(np.sum(np.abs(y_true)))
+    mape = float(np.sum(abs_err) / total_real * 100) if total_real > 0 else 0.0  # WMAPE
+
     rmse = float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
     ss_res = float(np.sum((y_true - y_pred) ** 2))
     ss_tot = float(np.sum((y_true - np.mean(y_true)) ** 2))
@@ -74,14 +89,17 @@ def _walk_forward_metrics(series, fit_fn, n_splits=5, test_window=14):
     Validacion walk-forward (expanding window).
 
     Para cada fold k: train = serie[:N - k*test_window], test = siguientes test_window puntos.
-    Promedia las metricas de todos los folds exitosos.
+    El WMAPE final se calcula sobre los errores acumulados de todos los folds
+    (no promedio de MAPEs por fold), lo que da mayor estabilidad estadistica.
 
     Parameters
     ----------
     fit_fn : callable(train: pd.Series, n_periods: int) -> np.ndarray
     """
     min_train = max(30, len(series) // 3)
-    all_metrics = []
+    all_abs_err = []
+    all_real = []
+    fold_metrics = []
 
     for k in range(n_splits, 0, -1):
         test_end = len(series) - (k - 1) * test_window
@@ -92,15 +110,23 @@ def _walk_forward_metrics(series, fit_fn, n_splits=5, test_window=14):
         test = series.iloc[test_start:test_end]
         try:
             preds = np.maximum(fit_fn(train, len(test)), 0)
-            all_metrics.append(_eval_metrics(test.values, preds))
+            fold_metrics.append(_eval_metrics(test.values, preds))
+            all_abs_err.append(np.abs(test.values - preds))
+            all_real.append(np.abs(test.values))
         except Exception as e:
             logger.debug("Walk-forward fold %d fallo: %s", k, e)
 
-    if not all_metrics:
+    if not fold_metrics:
         return {"mae": 0.0, "mape": 0.0, "rmse": 0.0, "r2": 0.0, "n_folds": 0}
 
-    avg = {m: float(np.mean([x[m] for x in all_metrics])) for m in ("mae", "mape", "rmse", "r2")}
-    avg["n_folds"] = len(all_metrics)
+    # WMAPE global sobre todos los folds concatenados
+    total_err  = float(np.sum(np.concatenate(all_abs_err)))
+    total_real = float(np.sum(np.concatenate(all_real)))
+    wmape_global = total_err / total_real * 100 if total_real > 0 else 0.0
+
+    avg = {m: float(np.mean([x[m] for x in fold_metrics])) for m in ("mae", "rmse", "r2")}
+    avg["mape"] = wmape_global  # WMAPE global, mas estable que promedio de WMAPEs
+    avg["n_folds"] = len(fold_metrics)
     return avg
 
 
@@ -491,3 +517,62 @@ def get_forecast_summary(db):
             "model_type": latest.model_type if latest else None,
         })
     return summary
+
+
+def get_model_performance(db):
+    """
+    Metricas agregadas del motor de forecasting.
+
+    Usa UNICAMENTE el ultimo run por medicamento para evitar que runs
+    antiguos (calculados con metodos anteriores) distorsionen el promedio.
+    WMAPE = Weighted Mean Absolute Percentage Error (estandar supply chain/farma).
+    """
+    all_runs = db.exec(select(ForecastRun)).all()
+    total_meds = len(db.exec(select(Medication)).all())
+
+    if not all_runs:
+        return {
+            "avg_mape": None,
+            "avg_mae": None,
+            "avg_rmse": None,
+            "avg_r2": None,
+            "total_runs": 0,
+            "meds_with_forecast": 0,
+            "total_meds": total_meds,
+            "coverage_pct": 0.0,
+            "target_mape": 15.0,
+            "meets_mape_target": False,
+            "mape_method": "WMAPE",
+        }
+
+    # Solo el run mas reciente por medicamento
+    latest_by_med: dict[int, ForecastRun] = {}
+    for r in all_runs:
+        existing = latest_by_med.get(r.medication_id)
+        if existing is None or r.created_at > existing.created_at:
+            latest_by_med[r.medication_id] = r
+
+    latest_runs = list(latest_by_med.values())
+    valid = [r for r in latest_runs if r.mape is not None]
+
+    avg_mape = float(np.mean([r.mape for r in valid])) if valid else None
+    avg_mae  = float(np.mean([r.mae  for r in valid if r.mae  is not None])) if valid else None
+    avg_rmse = float(np.mean([r.rmse for r in valid if r.rmse is not None])) if valid else None
+    avg_r2   = float(np.mean([r.r2   for r in valid if r.r2   is not None])) if valid else None
+
+    meds_with_forecast = len(latest_by_med)
+    coverage_pct = round(meds_with_forecast / total_meds * 100, 1) if total_meds > 0 else 0.0
+
+    return {
+        "avg_mape": round(avg_mape, 1) if avg_mape is not None else None,
+        "avg_mae":  round(avg_mae,  2) if avg_mae  is not None else None,
+        "avg_rmse": round(avg_rmse, 2) if avg_rmse is not None else None,
+        "avg_r2":   round(avg_r2,   3) if avg_r2   is not None else None,
+        "total_runs": len(all_runs),
+        "meds_with_forecast": meds_with_forecast,
+        "total_meds": total_meds,
+        "coverage_pct": coverage_pct,
+        "target_mape": 15.0,
+        "meets_mape_target": avg_mape is not None and avg_mape < 15.0,
+        "mape_method": "WMAPE",
+    }

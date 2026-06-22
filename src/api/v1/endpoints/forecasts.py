@@ -23,6 +23,7 @@ from src.core.factory import ForecastModelFactory
 from src.services.forecast_service import (
     save_forecast,
     get_forecast_summary,
+    get_model_performance,
 )
 
 logger = logging.getLogger(__name__)
@@ -241,6 +242,23 @@ async def get_latest_forecast(
             for pt in points
         ],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET — métricas de rendimiento agregadas del motor predictivo
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/performance",
+    response_model=Dict[str, Any],
+    summary="Métricas de rendimiento del motor predictivo (MAPE, RMSE, cobertura)",
+    tags=["forecasts"],
+)
+async def model_performance(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    return get_model_performance(db)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
